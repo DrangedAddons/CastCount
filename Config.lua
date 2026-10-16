@@ -80,12 +80,8 @@ function builders.buttons(p)
         y = y - 20
     end
 
-    local status = UI.Text(p, "", "GameFontNormalLarge")
-    status:SetPoint("TOPLEFT", 0, y - 14)
-    Refresher(function() status:SetText(("%d buttons selected"):format(CC.SelectedCount())) end)
-
     local addAll = UI.Button(p, "Add every button on screen", 210, 24, function() CC.SelectAllVisible() end)
-    addAll:SetPoint("TOPLEFT", 0, y - 48)
+    addAll:SetPoint("TOPLEFT", 0, y - 16)
     local clear = UI.Button(p, "Remove all", 120, 24, function() StaticPopup_Show("CASTCOUNT_CLEAR") end)
     clear:SetPoint("LEFT", addAll, "RIGHT", 10, 0)
 
