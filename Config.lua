@@ -249,6 +249,8 @@ local function PreviewSource()
     return "Interface\\Icons\\Spell_Frost_FrostBolt02", 45
 end
 
+local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Free" }
+
 -- A clickable mock action button showing a count in one look.
 local function PreviewButton(parent, onClick)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
@@ -307,10 +309,21 @@ function builders.text(p)
     lowAt:SetPoint("LEFT", lowText, "RIGHT", 10, 0)
     local lowText2 = UI.Text(lowRow, "casts left (0 turns it off)")
     lowText2:SetPoint("LEFT", lowAt, "RIGHT", 6, 0)
+    local freeRow = CreateFrame("Frame", nil, p)
+    freeRow:SetSize(440, 22)
+    freeRow:SetPoint("TOPLEFT", 0, -30)
+    local freeLabel = UI.Text(freeRow, "Show")
+    freeLabel:SetPoint("LEFT", 0, 0)
+    local freeText = UI.Edit(freeRow, 70, false, function() return CC.db.looks.free.text end,
+        function(v) CC.db.looks.free.text = v; StyleChanged() end)
+    freeText:SetPoint("LEFT", freeLabel, "RIGHT", 10, 0)
+    local freeNote = UI.Text(freeRow, "when a mana spell is free right now (Clearcasting...)", "GameFontHighlightSmall")
+    freeNote:SetPoint("LEFT", freeText, "RIGHT", 8, 0)
     local when = Note(p, "", 0, -34, 440)
     Refresher(function()
         lowRow:SetShown(editing == "low")
-        when:SetShown(editing ~= "low")
+        freeRow:SetShown(editing == "free")
+        when:SetShown(editing == "normal" or editing == "oom")
         copy:SetShown(editing ~= "normal")
         if editing == "normal" then
             when:SetText("Used when you have more casts left than the Low count look covers.")
@@ -355,12 +368,14 @@ function builders.text(p)
         function() return L().anchor end, function(v) L().anchor = v; StyleChanged() end)
     anchor:SetPoint("TOPLEFT", 0, y0 - 184)
 
-    local x = UI.Slider(p, "Nudge left / right", -30, 30, 1, 210, function() return L().x end,
-        function(v) L().x = v; StyleChanged() end)
+    -- 0, 0 is the chosen position itself; the arrows nudge 1 (Shift 5, Ctrl 10).
+    local x = UI.Slider(p, "X offset (left - / right +)", -50, 50, 1, 216, function() return L().x end,
+        function(v) L().x = v; StyleChanged() end, true)
     x:SetPoint("TOPLEFT", 0, y0 - 218)
-    local y = UI.Slider(p, "Nudge down / up", -30, 30, 1, 210, function() return L().y end,
-        function(v) L().y = v; StyleChanged() end)
+    local y = UI.Slider(p, "Y offset (down - / up +)", -50, 50, 1, 216, function() return L().y end,
+        function(v) L().y = v; StyleChanged() end, true)
     y:SetPoint("TOPLEFT", 230, y0 - 218)
+    Note(p, "Arrows nudge by 1, Shift-click by 5, Ctrl-click by 10.", 0, y0 - 256, 440)
 
     local reset = UI.Button(p, "Reset all looks", 140, 22, function()
         CC.ResetSection("looks")
@@ -371,7 +386,7 @@ function builders.text(p)
 
     Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -380)
 
-    -- Preview, on the right: Normal big, Low count and Out of mana smaller.
+    -- Preview, on the right: Normal big, Low count, Out of mana and Free smaller.
     -- Clicking one picks that look to edit.
     local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
     box:SetSize(176, 320)
@@ -393,11 +408,16 @@ function builders.text(p)
     UpdatePreview = function()
         if not box:IsVisible() then return end
         local icon, size = PreviewSource()
-        local counts = { normal = math.max(12, CC.db.lowAt + 5), low = math.max(1, CC.db.lowAt), oom = 0 }
+        local counts = {
+            normal = math.max(12, CC.db.lowAt + 5), low = math.max(1, CC.db.lowAt), oom = 0,
+            free = CC.db.looks.free.text,
+        }
+        local small = math.min(1, 46 / size)
         local layout = {
             normal = { scale = math.min(2, 120 / size), x = 88, y = 30 },
-            low    = { scale = math.min(1, 60 / size), x = 46 },
-            oom    = { scale = math.min(1, 60 / size), x = 130 },
+            low    = { scale = small, x = 32 },
+            oom    = { scale = small, x = 88 },
+            free   = { scale = small, x = 144 },
         }
         local bigH = size * layout.normal.scale
         for _, key in ipairs(CC.LOOKS) do
@@ -415,8 +435,8 @@ function builders.text(p)
             else
                 b:SetBackdropBorderColor(0, 0, 0, 1)
             end
-            b.label:SetText(CC.LOOK_LABELS[key])
-            if key == "low" and CC.db.lowAt < 1 then b.label:SetText("Low count (off)") end
+            b.label:SetText(PREVIEW_LABELS[key])
+            if key == "low" and CC.db.lowAt < 1 then b.label:SetText("Low (off)") end
             b.label:SetTextColor(key == editing and 1 or 0.8, key == editing and 0.82 or 0.8, key == editing and 0 or 0.8)
         end
     end
@@ -458,51 +478,93 @@ end
 ---------------------------------------------------------
 --  SECTION: Conditions tab
 ---------------------------------------------------------
--- A scrolling list of "If <subject> <op> <value> then <action>" rows, as many as you like.
+-- WeakAuras-style condition cards in a scrolling list, as many as you like:
+--   If <check> [and/or more checks]   Then <property change> [more changes]
+-- Each card collapses, moves up/down, copies and deletes.
 local SUBJECTS = {
     { value = "casts",  label = "Casts left" },
     { value = "mana",   label = "Mana %" },
+    { value = "free",   label = "Spell is free right now" },
     { value = "combat", label = "In combat" },
-    { value = "free",   label = "Spell costs no mana" },
+    { value = "hover",  label = "Mouse is over the button" },
 }
+local IS_BOOL = { free = true, combat = true, hover = true }
 local NUMBER_OPS = {
-    { value = "lt", label = "is below" },
-    { value = "le", label = "is at most" },
-    { value = "eq", label = "is" },
-    { value = "ne", label = "is not" },
-    { value = "ge", label = "is at least" },
-    { value = "gt", label = "is above" },
+    { value = "<",  label = "<" },
+    { value = "<=", label = "<=" },
+    { value = "=",  label = "=" },
+    { value = "!=", label = "!=" },
+    { value = ">=", label = ">=" },
+    { value = ">",  label = ">" },
 }
 local BOOL_OPS = {
-    { value = "is",    label = "is true" },
-    { value = "isnot", label = "is false" },
+    { value = "true",  label = "is true" },
+    { value = "false", label = "is false" },
 }
-local ACTIONS = {
-    { value = "color", label = "Change count colour" },
-    { value = "hide",  label = "Hide the count" },
-    { value = "glow",  label = "Glow the button" },
-    { value = "pulse", label = "Pulse the count" },
-    { value = "sound", label = "Play a sound" },
+local MATCH = {
+    { value = "all", label = "All of these are true" },
+    { value = "any", label = "Any of these is true" },
 }
-local ROW_H = 62
+local PROPS = {
+    { value = "textcolor", label = "Count colour" },
+    { value = "alpha",     label = "Count transparency" },
+    { value = "hide",      label = "Hide the count" },
+    { value = "size",      label = "Count size" },
+    { value = "offset",    label = "Move the count" },
+    { value = "text",      label = "Replace the count with text" },
+    { value = "pulse",     label = "Pulse the count" },
+    { value = "glow",      label = "Glow the button" },
+    { value = "tint",      label = "Tint the button" },
+    { value = "sound",     label = "Play a sound" },
+    { value = "chat",      label = "Chat message (only you)" },
+}
+local PROP_LABEL = {}
+for _, pr in ipairs(PROPS) do PROP_LABEL[pr.value] = pr.label end
+local SUBJECT_LABEL = {}
+for _, s in ipairs(SUBJECTS) do SUBJECT_LABEL[s.value] = s.label end
 
-local function IsBool(subject) return subject == "combat" or subject == "free" end
+local CARD_W, HEADER_H, ROW_H = 620, 28, 28
 
-local function NewCondition()
-    return {
-        enabled = true, subject = "casts", op = "le", value = 1,
-        action = "glow", color = Color(1, 0.82, 0), sound = "raidwarning",
-    }
+local function NewCheck() return { subject = "casts", op = "<=", value = 1 } end
+
+local function NewProp(t)
+    local pr = { type = t or "glow", color = Color(1, 0.82, 0), glowType = "button", sound = "raidwarning",
+        value = 50, text = "", x = 0, y = 0 }
+    if t == "size" then pr.value = 24 end
+    if t == "tint" then pr.color = Color(1, 0, 0, 0.35) end
+    if t == "textcolor" then pr.color = Color(1, 0.2, 0.2) end
+    return pr
 end
 
--- Keeps a condition consistent after its subject changes.
-local function FixCondition(c)
-    if IsBool(c.subject) then
-        if c.op ~= "is" and c.op ~= "isnot" then c.op = "is" end
-    elseif c.op == "is" or c.op == "isnot" then
-        c.op = "le"
+local function NewCondition()
+    return { enabled = true, match = "all", checks = { NewCheck() }, props = { NewProp("glow") } }
+end
+
+-- Keeps a check consistent after its subject changes.
+local function FixCheck(ch)
+    if IS_BOOL[ch.subject] then
+        if ch.op ~= "true" and ch.op ~= "false" then ch.op = "true" end
+    elseif ch.op == "true" or ch.op == "false" then
+        ch.op = "<="
     end
-    if c.action == "sound" and not CC.CondIsLuaKnown(c) then c.action = "color" end
+end
+
+local function Summary(i, c)
+    local ch = c.checks[1]
+    local text = ("%d. "):format(i)
+    if ch then
+        text = text .. "If " .. (SUBJECT_LABEL[ch.subject] or "?")
+        if IS_BOOL[ch.subject] then
+            text = text .. (ch.op == "false" and " is false" or "")
+        else
+            text = text .. " " .. ch.op .. " " .. tostring(ch.value)
+        end
+        if #c.checks > 1 then text = text .. ((c.match == "any") and " or ..." or " and ...") end
+    end
+    local names = {}
+    for _, pr in ipairs(c.props) do names[#names + 1] = PROP_LABEL[pr.type] or pr.type end
+    if #names > 0 then text = text .. ": " .. table.concat(names, ", ") end
+    return text
 end
 
 local function DropFocus()
@@ -510,135 +572,312 @@ local function DropFocus()
     if f then f:ClearFocus() end
 end
 
+local function SmallButton(parent, text, w, onClick)
+    local b = UI.Button(parent, text, w, 20, onClick)
+    return b
+end
+
 function builders.conditions(p)
     local sf, content = UI.ScrollArea(p)
     local function Conds() return CC.db.conditions end
-
-    -- Free spells
-    local function F() return CC.db.free end
-    Heading(content, "Free spells", 0, 0)
-    local freeLabel = UI.Text(content, "When a spell costs no mana:")
-    freeLabel:SetPoint("TOPLEFT", 0, -26)
-    local mode = UI.Dropdown(content, 150, function()
-        return {
-            { value = "hide", label = "Show nothing" },
-            { value = "text", label = "Show text" },
-        }
-    end, function() return F().mode end, function(v) F().mode = v; Changed() end)
-    mode:SetPoint("TOPLEFT", 190, -21)
-    local freeText = UI.Edit(content, 80, false, function() return F().text end,
-        function(v) F().text = v; Changed() end)
-    freeText:SetPoint("TOPLEFT", 356, -22)
-    local freeColor = UI.Swatch(content, function() return F().color end, Changed)
-    freeColor:SetPoint("TOPLEFT", 446, -20)
-    Refresher(function()
-        local on = F().mode == "text"
-        freeText:SetActive(on)
-        freeColor:SetActive(on)
-    end)
-
-    Heading(content, "Conditions", 0, -64)
-    Note(content, "Checked top to bottom; when two change the colour, the lower one wins. "
-        .. "Sounds can only follow In combat and Spell costs no mana: Forever hides your current mana from addons.", 0, -84, 600)
-
-    local rows = {}
+    local cards = {}
     local add
 
-    local function Layout()
-        local list = Conds()
-        for i, row in ipairs(rows) do
-            row.cond = list[i]
-            row:SetShown(row.cond ~= nil)
-        end
-        add:ClearAllPoints()
-        add:SetPoint("TOPLEFT", 0, -124 - #list * ROW_H)
-        sf:SetContentHeight(124 + #list * ROW_H + 40)
+    local function Rebuild()
+        DropFocus()
+        Changed()
+        UI.RefreshAll()
     end
 
-    local function NewRow(i)
-        local row = CreateFrame("Frame", nil, content, "BackdropTemplate")
-        row:SetSize(620, ROW_H - 6)
-        row:SetPoint("TOPLEFT", 0, -118 - (i - 1) * ROW_H)
-        UI.Backdrop(row, 0.08, 0.08, 0.09, 0.9)
-        local function C() return row.cond or NewCondition() end
+    Note(content, "Each condition checks your casts left (and a few other things) and changes how the count "
+        .. "or button looks. They're applied top to bottom, so a lower condition wins when two change the same thing.",
+        0, 0, 600)
+
+    -- One check row: subject, operator, value.
+    local function CheckRow(card, i)
+        local row = CreateFrame("Frame", nil, card)
+        row:SetSize(CARD_W - 30, ROW_H - 2)
+        local function Ch() return row.item or NewCheck() end
         local function Set(field, v)
-            if not row.cond then return end
-            row.cond[field] = v
-            FixCondition(row.cond)
+            if not row.item then return end
+            row.item[field] = v
+            FixCheck(row.item)
             Changed()
         end
-
-        local en = UI.Check(row, "If", function() return C().enabled end, function(v) Set("enabled", v) end)
-        en:SetPoint("TOPLEFT", 4, -4)
-        local subject = UI.Dropdown(row, 150, function() return SUBJECTS end,
-            function() return C().subject end, function(v) Set("subject", v) end)
-        subject:SetPoint("TOPLEFT", 50, -5)
-        local op = UI.Dropdown(row, 110, function() return IsBool(C().subject) and BOOL_OPS or NUMBER_OPS end,
-            function() return C().op end, function(v) Set("op", v) end)
+        local subject = UI.Dropdown(row, 190, function() return SUBJECTS end,
+            function() return Ch().subject end, function(v) Set("subject", v) end)
+        subject:SetPoint("LEFT", 0, 0)
+        local op = UI.Dropdown(row, 80, function() return IS_BOOL[Ch().subject] and BOOL_OPS or NUMBER_OPS end,
+            function() return Ch().op end, function(v) Set("op", v) end)
         op:SetPoint("LEFT", subject, "RIGHT", 6, 0)
-        local value = UI.Edit(row, 40, true, function() return C().value or 0 end,
-            function(v) Set("value", v) end)
-        value:SetPoint("LEFT", op, "RIGHT", 10, 0)
-        local unit = UI.Text(row, "")
-        unit:SetPoint("LEFT", value, "RIGHT", 4, 0)
-
-        local thenText = UI.Text(row, "then")
-        thenText:SetPoint("TOPLEFT", 30, -36)
-        local action = UI.Dropdown(row, 170, function()
-            local items = {}
-            for _, a in ipairs(ACTIONS) do
-                if a.value ~= "sound" or CC.CondIsLuaKnown(C()) then items[#items + 1] = a end
+        row.value = UI.Edit(row, 44, true, function() return Ch().value or 0 end, function(v) Set("value", v) end)
+        row.value:SetPoint("LEFT", op, "RIGHT", 10, 0)
+        row.unit = UI.Text(row, "")
+        row.unit:SetPoint("LEFT", row.value, "RIGHT", 4, 0)
+        row.remove = SmallButton(row, "X", 24, function()
+            local list = card.cond and card.cond.checks
+            if not list or #list < 2 then return end
+            for idx, ch in ipairs(list) do
+                if ch == row.item then table.remove(list, idx) break end
             end
-            return items
-        end, function() return C().action end, function(v) Set("action", v) end)
-        action:SetPoint("TOPLEFT", 66, -31)
-        local swatch = UI.Swatch(row, function() return C().color end, Changed)
-        swatch:SetPoint("LEFT", action, "RIGHT", 8, 0)
-        local sound = UI.Dropdown(row, 150, CC.SoundItems,
-            function() return C().sound end, function(v) Set("sound", v); CC.PlaySound(v) end)
-        sound:SetPoint("LEFT", action, "RIGHT", 8, 0)
-        local test = UI.Button(row, "Test", 50, 20, function() CC.PlaySound(C().sound) end)
-        test:SetPoint("LEFT", sound, "RIGHT", 6, 0)
-
-        local remove = UI.Button(row, "Remove", 70, 20, function()
-            DropFocus()
-            for idx, c in ipairs(Conds()) do
-                if c == row.cond then table.remove(Conds(), idx) break end
-            end
-            Changed()
-            UI.RefreshAll()
+            Rebuild()
         end)
-        remove:SetPoint("TOPRIGHT", -6, -6)
-
-        Refresher(function()
-            if not row.cond then return end
-            local c = row.cond
-            local numeric = not IsBool(c.subject)
-            value:SetShown(numeric)
-            unit:SetText(c.subject == "mana" and "%" or (c.subject == "casts" and "casts" or ""))
-            unit:SetShown(numeric)
-            swatch:SetShown(c.action == "color" or c.action == "glow")
-            sound:SetShown(c.action == "sound")
-            test:SetShown(c.action == "sound")
-            row:SetAlpha(c.enabled and 1 or 0.6)
-        end)
-        rows[i] = row
+        row.remove:SetPoint("LEFT", subject, "LEFT", 420, 0)
         return row
     end
 
+    -- One property row: what to change, and its settings.
+    local function PropRow(card, i)
+        local row = CreateFrame("Frame", nil, card)
+        row:SetSize(CARD_W - 30, ROW_H - 2)
+        local function Pr() return row.item or NewProp() end
+        local function Set(field, v)
+            if not row.item then return end
+            row.item[field] = v
+            -- Sensible starting values when the kind of change switches.
+            if field == "type" then
+                local pr = row.item
+                if v == "size" and ((pr.value or 0) < 6 or (pr.value or 0) > 60) then pr.value = 24 end
+                if v == "alpha" and (pr.value or 0) > 100 then pr.value = 50 end
+                if v == "tint" and pr.color and (pr.color.a or 1) > 0.6 then pr.color.a = 0.35 end
+                if v ~= "tint" and pr.color and (pr.color.a or 1) < 0.3 then pr.color.a = 1 end
+                UI.RefreshAll()
+            end
+            Changed()
+        end
+        local kind = UI.Dropdown(row, 200, function() return PROPS end,
+            function() return Pr().type end, function(v) Set("type", v) end)
+        kind:SetPoint("LEFT", 0, 0)
+        local x0 = 210
+        row.swatch = UI.Swatch(row, function() return Pr().color end, Changed)
+        row.number = UI.Edit(row, 44, true, function() return Pr().value or 0 end, function(v) Set("value", v) end)
+        row.numberUnit = UI.Text(row, "")
+        row.numberUnit:SetPoint("LEFT", row.number, "RIGHT", 4, 0)
+        row.text = UI.Edit(row, 150, false, function() return Pr().text or "" end, function(v) Set("text", v) end)
+        row.xLabel = UI.Text(row, "X")
+        row.x = UI.Edit(row, 44, "signed", function() return Pr().x or 0 end, function(v) Set("x", v) end)
+        row.yLabel = UI.Text(row, "Y")
+        row.y = UI.Edit(row, 44, "signed", function() return Pr().y or 0 end, function(v) Set("y", v) end)
+        row.glowType = UI.Dropdown(row, 150, function() return CC.GLOW_TYPES end,
+            function() return Pr().glowType end, function(v) Set("glowType", v) end)
+        row.sound = UI.Dropdown(row, 160, CC.SoundItems,
+            function() return Pr().sound end, function(v) Set("sound", v); CC.PlaySound(v) end)
+        row.test = SmallButton(row, "Test", 44, function() CC.PlaySound(Pr().sound) end)
+
+        row.swatch:SetPoint("LEFT", x0, 0)
+        row.number:SetPoint("LEFT", x0 + 6, 0)
+        row.text:SetPoint("LEFT", x0 + 6, 0)
+        row.xLabel:SetPoint("LEFT", x0, 0)
+        row.x:SetPoint("LEFT", row.xLabel, "RIGHT", 8, 0)
+        row.yLabel:SetPoint("LEFT", row.x, "RIGHT", 10, 0)
+        row.y:SetPoint("LEFT", row.yLabel, "RIGHT", 8, 0)
+        row.glowType:SetPoint("LEFT", x0, 0)
+        row.sound:SetPoint("LEFT", x0, 0)
+        row.test:SetPoint("LEFT", row.sound, "RIGHT", 6, 0)
+
+        row.remove = SmallButton(row, "X", 24, function()
+            local list = card.cond and card.cond.props
+            if not list then return end
+            for idx, pr in ipairs(list) do
+                if pr == row.item then table.remove(list, idx) break end
+            end
+            Rebuild()
+        end)
+        row.remove:SetPoint("LEFT", 420, 0)
+
+        function row:ShowFor(pr)
+            local t = pr.type
+            self.swatch:SetShown(t == "textcolor" or t == "tint" or t == "glow")
+            self.swatch:ClearAllPoints()
+            if t == "glow" then
+                self.swatch:SetPoint("LEFT", self.glowType, "RIGHT", 8, 0)
+            else
+                self.swatch:SetPoint("LEFT", x0, 0)
+            end
+            self.number:SetShown(t == "alpha" or t == "size")
+            self.numberUnit:SetShown(t == "alpha" or t == "size")
+            self.numberUnit:SetText(t == "alpha" and "% visible" or "pt")
+            self.text:SetShown(t == "text" or t == "chat")
+            self.text:SetWidth(t == "chat" and 200 or 120)
+            self.xLabel:SetShown(t == "offset")
+            self.x:SetShown(t == "offset")
+            self.yLabel:SetShown(t == "offset")
+            self.y:SetShown(t == "offset")
+            self.glowType:SetShown(t == "glow")
+            self.sound:SetShown(t == "sound")
+            self.test:SetShown(t == "sound")
+        end
+        return row
+    end
+
+    local function Card(i)
+        local card = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        card:SetWidth(CARD_W)
+        UI.Backdrop(card, 0.08, 0.08, 0.09, 0.95)
+        card.checkRows, card.propRows = {}, {}
+
+        card.toggle = CreateFrame("Button", nil, card)
+        card.toggle:SetSize(16, 16)
+        card.toggle:SetPoint("TOPLEFT", 6, -6)
+        card.toggle:SetScript("OnClick", function()
+            if card.cond then card.cond.collapsed = not card.cond.collapsed end
+            Rebuild()
+        end)
+        card.enabled = UI.Check(card, "", function() return card.cond and card.cond.enabled end,
+            function(v) if card.cond then card.cond.enabled = v; Changed() end end)
+        card.enabled:SetPoint("TOPLEFT", 26, -2)
+        card.title = UI.Text(card, "", "GameFontNormal")
+        card.title:SetPoint("TOPLEFT", 54, -8)
+        card.title:SetWidth(390)
+        card.title:SetWordWrap(false)
+
+        local function Move(dir)
+            local list = Conds()
+            for idx, c in ipairs(list) do
+                if c == card.cond then
+                    local to = idx + dir
+                    if to >= 1 and to <= #list then list[idx], list[to] = list[to], list[idx] end
+                    break
+                end
+            end
+            Rebuild()
+        end
+        card.delete = SmallButton(card, "X", 24, function()
+            for idx, c in ipairs(Conds()) do
+                if c == card.cond then table.remove(Conds(), idx) break end
+            end
+            Rebuild()
+        end)
+        card.delete:SetPoint("TOPRIGHT", -6, -4)
+        card.copy = SmallButton(card, "Copy", 46, function()
+            for idx, c in ipairs(Conds()) do
+                if c == card.cond then table.insert(Conds(), idx + 1, CC.CopyDeep(c)) break end
+            end
+            Rebuild()
+        end)
+        card.copy:SetPoint("RIGHT", card.delete, "LEFT", -4, 0)
+        card.down = SmallButton(card, "Down", 46, function() Move(1) end)
+        card.down:SetPoint("RIGHT", card.copy, "LEFT", -4, 0)
+        card.up = SmallButton(card, "Up", 36, function() Move(-1) end)
+        card.up:SetPoint("RIGHT", card.down, "LEFT", -4, 0)
+
+        card.ifLabel = UI.Text(card, "If", "GameFontNormal")
+        card.match = UI.Dropdown(card, 190, function() return MATCH end,
+            function() return card.cond and card.cond.match or "all" end,
+            function(v) if card.cond then card.cond.match = v; Changed() end end)
+        card.addCheck = SmallButton(card, "+ Add check", 100, function()
+            if card.cond then table.insert(card.cond.checks, NewCheck()) end
+            Rebuild()
+        end)
+        card.thenLabel = UI.Text(card, "Then", "GameFontNormal")
+        card.addProp = SmallButton(card, "+ Add property change", 160, function()
+            if card.cond then table.insert(card.cond.props, NewProp("textcolor")) end
+            Rebuild()
+        end)
+        card.warn = UI.Text(card, "Sounds and chat messages only work when every check is one CastCount can see "
+            .. "(Spell is free, In combat, Mouse over): Forever hides your mana.", "GameFontHighlightSmall")
+        card.warn:SetWidth(CARD_W - 40)
+        card.warn:SetTextColor(1, 0.5, 0.3)
+
+        -- Lays the card out for its condition and returns its height.
+        function card:Layout(index)
+            local c = self.cond
+            self.title:SetText(Summary(index, c))
+            self.toggle:SetNormalTexture(c.collapsed and "Interface\\Buttons\\UI-PlusButton-Up"
+                or "Interface\\Buttons\\UI-MinusButton-Up")
+            self.up:SetEnabled(index > 1)
+            self.down:SetEnabled(index < #Conds())
+            local open = not c.collapsed
+            for _, w in ipairs({ self.ifLabel, self.match, self.addCheck, self.thenLabel, self.addProp, self.warn }) do
+                w:SetShown(open)
+            end
+            for _, r in ipairs(self.checkRows) do r:Hide() end
+            for _, r in ipairs(self.propRows) do r:Hide() end
+            if not open then return HEADER_H + 4 end
+
+            local y = -HEADER_H - 4
+            self.ifLabel:ClearAllPoints()
+            self.ifLabel:SetPoint("TOPLEFT", 10, y - 4)
+            self.match:SetShown(#c.checks > 1)
+            self.match:ClearAllPoints()
+            self.match:SetPoint("TOPLEFT", 40, y)
+            if #c.checks > 1 then y = y - 26 end
+            for ci, ch in ipairs(c.checks) do
+                local r = self.checkRows[ci] or CheckRow(self, ci)
+                self.checkRows[ci] = r
+                r.item = ch
+                r:ClearAllPoints()
+                r:SetPoint("TOPLEFT", 40, y)
+                local numeric = not IS_BOOL[ch.subject]
+                r.value:SetShown(numeric)
+                r.unit:SetShown(numeric)
+                r.unit:SetText(ch.subject == "mana" and "%" or (ch.subject == "casts" and "casts" or ""))
+                r.remove:SetShown(#c.checks > 1)
+                r:Show()
+                y = y - ROW_H
+            end
+            self.addCheck:ClearAllPoints()
+            self.addCheck:SetPoint("TOPLEFT", 40, y)
+            y = y - 28
+
+            self.thenLabel:ClearAllPoints()
+            self.thenLabel:SetPoint("TOPLEFT", 10, y - 4)
+            local needsLua = false
+            for pi, pr in ipairs(c.props) do
+                local r = self.propRows[pi] or PropRow(self, pi)
+                self.propRows[pi] = r
+                r.item = pr
+                r:ClearAllPoints()
+                r:SetPoint("TOPLEFT", 40, y)
+                r:ShowFor(pr)
+                r:Show()
+                if pr.type == "sound" or pr.type == "chat" then needsLua = true end
+                y = y - ROW_H
+            end
+            if #c.props == 0 then y = y - 4 end
+            local warn = needsLua and not CC.CondIsLuaKnown(c)
+            self.warn:SetShown(warn)
+            if warn then
+                self.warn:ClearAllPoints()
+                self.warn:SetPoint("TOPLEFT", 40, y - 2)
+                y = y - 30
+            end
+            self.addProp:ClearAllPoints()
+            self.addProp:SetPoint("TOPLEFT", 40, y)
+            y = y - 30
+            return -y + 4
+        end
+        cards[i] = card
+        return card
+    end
+
     add = UI.Button(content, "Add a condition", 140, 22, function()
-        DropFocus()
         local list = Conds()
+        for _, c in ipairs(list) do c.collapsed = true end
         list[#list + 1] = NewCondition()
-        if not rows[#list] then NewRow(#list) end
-        Changed()
-        UI.RefreshAll()
+        Rebuild()
         sf:ScrollToBottom()
     end)
 
     Refresher(function()
-        for i = #rows + 1, #Conds() do NewRow(i) end
-        Layout()
+        local list = Conds()
+        local y = -40
+        for i, c in ipairs(list) do
+            local card = cards[i] or Card(i)
+            card.cond = c
+            card:ClearAllPoints()
+            card:SetPoint("TOPLEFT", 0, y)
+            card:SetHeight(card:Layout(i))
+            card:Show()
+            y = y - card:GetHeight() - 8
+        end
+        for i = #list + 1, #cards do
+            cards[i].cond = nil
+            cards[i]:Hide()
+        end
+        add:ClearAllPoints()
+        add:SetPoint("TOPLEFT", 0, y - 4)
+        sf:SetContentHeight(-y + 40)
     end)
 end
 

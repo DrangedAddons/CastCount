@@ -54,6 +54,8 @@ function CC.SpellCost(spellID)
             end
             if cost > 0 then
                 kind, amount = "mana", cost
+                CC.everMana = CC.everMana or {}
+                CC.everMana[spellID] = true
                 break
             end
         elseif cost > 0 then

@@ -10,6 +10,8 @@
 ## IconTexture: Interface\Icons\Spell_Holy_MagicalSentry
 ## AddonCompartmentFunc: CastCount_OnCompartmentClick
 
+Libs\LibStub\LibStub.lua
+Libs\LibCustomGlow-1.0\LibCustomGlow-1.0.lua
 Core.lua
 Widgets.lua
 Spells.lua

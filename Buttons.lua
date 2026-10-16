@@ -74,20 +74,25 @@ end
 --  SECTION: Drawing
 ---------------------------------------------------------
 -- Each selected button gets a holder frame (a child of the button, above its
--- cooldown swipe) with one text layer per look (Normal / Low count / Out of
--- mana), each as a still and a pulsing copy, plus one glow per glow condition.
--- All layers show the same text; which are visible (and their colours) is
--- worked out per refresh, or by the game through curves when mana is secret.
+-- cooldown swipe). What it shows is worked out as a "state": which look, the
+-- colour, transparency, any size/offset/text/pulse overrides from conditions,
+-- glows and an icon tint. Every distinct text variant (look + overrides) gets its
+-- own text layer, every distinct glow its own glow frame; the state decides
+-- which are visible. When mana is secret the game decides, through curves.
 local holders = {}   -- button -> holder
 local hovered = {}   -- button -> true while the mouse is over it
 local LOOKS = CC.LOOKS
-local GLOW_TEX = "Interface\\Buttons\\UI-ActionButton-Border"
+local LCG = LibStub and LibStub("LibCustomGlow-1.0", true)
+local NO_TINT = { r = 0, g = 0, b = 0, a = 0 }
+local styleVersion = 1
 
--- Applies a look (font, size, outline, shadow, position) to a font string.
-function CC.StyleFont(fs, look, anchorTo, fontPath)
+-- Applies a look (font, size, outline, shadow, position) to a font string;
+-- size and dx/dy come from conditions when they override the look.
+function CC.StyleFont(fs, look, anchorTo, fontPath, size, dx, dy)
     local flags = (look.outline ~= "NONE") and look.outline or ""
-    fs:SetFont(fontPath or CC.FontPath(look.font), look.size, flags)
-    if not fs:GetFont() then fs:SetFont(CC.DEFAULT_FONT, look.size, flags) end
+    size = size or look.size
+    fs:SetFont(fontPath or CC.FontPath(look.font), size, flags)
+    if not fs:GetFont() then fs:SetFont(CC.DEFAULT_FONT, size, flags) end
     if look.shadow then
         fs:SetShadowColor(0, 0, 0, 1)
         fs:SetShadowOffset(1, -1)
@@ -95,14 +100,36 @@ function CC.StyleFont(fs, look, anchorTo, fontPath)
         fs:SetShadowOffset(0, 0)
     end
     fs:ClearAllPoints()
-    fs:SetPoint(look.anchor, anchorTo, look.anchor, look.x, look.y)
+    fs:SetPoint(look.anchor, anchorTo, look.anchor, look.x + (dx or 0), look.y + (dy or 0))
+end
+
+local function Holder(btn)
+    local h = holders[btn]
+    if not h then
+        h = CreateFrame("Frame", nil, btn)
+        h:SetAllPoints(btn)
+        h.layers, h.glows = {}, {}
+        h.tint = h:CreateTexture(nil, "ARTWORK")
+        h.tint:SetPoint("TOPLEFT", 2, -2)
+        h.tint:SetPoint("BOTTOMRIGHT", -2, 2)
+        h.tint:SetColorTexture(1, 1, 1, 1)
+        h.tint:SetVertexColor(0, 0, 0, 0)
+        holders[btn] = h
+        btn:HookScript("OnEnter", function() hovered[btn] = true; CC.MarkDirty() end)
+        btn:HookScript("OnLeave", function() hovered[btn] = nil; CC.MarkDirty() end)
+    end
+    -- Keep above the button even if a bar addon re-levels it.
+    local want = math.min(9980, btn:GetFrameLevel() + 10)
+    if h:GetFrameLevel() < want then h:SetFrameLevel(want) end
+    return h
 end
 
 local function NewLayer(h, pulse)
     local f = CreateFrame("Frame", nil, h)
     f:SetAllPoints(h)
-    f:SetFrameLevel(h:GetFrameLevel() + 2)
+    f:SetFrameLevel(h:GetFrameLevel() + 5)
     f.fs = f:CreateFontString(nil, "OVERLAY")
+    f.pulse = pulse
     if pulse then
         local ag = f:CreateAnimationGroup()
         ag:SetLooping("BOUNCE")
@@ -123,67 +150,70 @@ local function NewLayer(h, pulse)
     return f
 end
 
-local function StyleHolder(h, paths)
-    for _, key in ipairs(LOOKS) do
-        local look, L = CC.db.looks[key], h.layers[key]
-        CC.StyleFont(L.still.fs, look, L.still, paths and paths[key])
-        CC.StyleFont(L.pulse.fs, look, L.pulse, paths and paths[key])
-    end
-end
-
-local function Holder(btn)
-    local h = holders[btn]
-    if not h then
-        h = CreateFrame("Frame", nil, btn)
-        h:SetAllPoints(btn)
-        h:SetFrameLevel(math.min(9990, btn:GetFrameLevel() + 10))
-        h.layers = {}
-        for _, key in ipairs(LOOKS) do
-            h.layers[key] = { still = NewLayer(h, false), pulse = NewLayer(h, true) }
+-- The text layer for variant key (reusing an idle layer when one fits).
+local function Layer(h, key, spec, inUse)
+    local f = h.layers[key]
+    if not f then
+        for k, other in pairs(h.layers) do
+            if not inUse[k] and other.pulse == spec.pulse then
+                h.layers[k], f = nil, other
+                break
+            end
         end
-        h.glows = {}
-        holders[btn] = h
-        StyleHolder(h)
-        btn:HookScript("OnEnter", function() hovered[btn] = true; CC.MarkDirty() end)
-        btn:HookScript("OnLeave", function() hovered[btn] = nil; CC.MarkDirty() end)
+        f = f or NewLayer(h, spec.pulse)
+        h.layers[key] = f
+        f.styled = nil
     end
-    -- Keep above the button even if a bar addon re-levels it.
-    local want = math.min(9990, btn:GetFrameLevel() + 10)
-    if h:GetFrameLevel() < want then h:SetFrameLevel(want) end
-    return h
+    if f.styled ~= styleVersion then
+        local look = CC.db.looks[spec.look]
+        CC.StyleFont(f.fs, look, f, nil, spec.size, spec.dx, spec.dy)
+        f.styled = styleVersion
+    end
+    return f
 end
 
-local function Glow(h, i)
-    local g = h.glows[i]
-    if not g then
-        g = CreateFrame("Frame", nil, h)
-        g:SetAllPoints(h)
-        g:SetFrameLevel(h:GetFrameLevel() + 1)
-        g.tex = g:CreateTexture(nil, "OVERLAY")
-        g.tex:SetTexture(GLOW_TEX)
-        g.tex:SetBlendMode("ADD")
-        g.tex:SetPoint("CENTER")
-        h.glows[i] = g
+local GLOW_TYPES = {
+    { value = "button",   label = "Action button glow" },
+    { value = "pixel",    label = "Pixel glow" },
+    { value = "autocast", label = "Autocast shine" },
+    { value = "proc",     label = "Proc glow" },
+    { value = "border",   label = "Simple border" },
+}
+CC.GLOW_TYPES = GLOW_TYPES
+
+-- A glow frame of one kind and colour; its alpha says whether it shows.
+local function GlowGate(h, key, glowType, c)
+    local g = h.glows[key]
+    if g then return g end
+    g = CreateFrame("Frame", nil, h)
+    g:SetAllPoints(h)
+    g:SetFrameLevel(h:GetFrameLevel() + 2)
+    local color = { c.r, c.g, c.b, c.a or 1 }
+    if LCG and glowType == "pixel" then
+        LCG.PixelGlow_Start(g, color, 8, 0.25, nil, 2, 0, 0, false, "cc")
+    elseif LCG and glowType == "autocast" then
+        LCG.AutoCastGlow_Start(g, color, 4, 0.125, 1, 0, 0, "cc")
+    elseif LCG and glowType == "proc" and LCG.ProcGlow_Start then
+        LCG.ProcGlow_Start(g, { color = color, startAnim = false, key = "cc" })
+    elseif LCG and glowType == "button" then
+        LCG.ButtonGlow_Start(g, color, 0.125)
+    else
+        local t = g:CreateTexture(nil, "OVERLAY")
+        t:SetTexture("Interface\\Buttons\\UI-ActionButton-Border")
+        t:SetBlendMode("ADD")
+        t:SetPoint("CENTER")
+        local w = h:GetWidth()
+        t:SetSize((w > 0 and w or 36) * 1.75, (w > 0 and w or 36) * 1.75)
+        t:SetVertexColor(c.r, c.g, c.b, c.a or 1)
     end
-    local w = h:GetWidth()
-    if w and w > 0 then g.tex:SetSize(w * 1.75, w * 1.75) end
-    local c = CC.db.conditions[i] and CC.db.conditions[i].color
-    if c then g.tex:SetVertexColor(c.r, c.g, c.b, c.a or 1) end
+    g:SetAlpha(0)
+    h.glows[key] = g
     return g
 end
 
 function CC.ApplyStyle()
-    local paths = {}
-    for _, key in ipairs(LOOKS) do paths[key] = CC.FontPath(CC.db.looks[key].font) end
-    for _, h in pairs(holders) do StyleHolder(h, paths) end
+    styleVersion = styleVersion + 1
     CC.MarkDirty()
-end
-
-local function SetAllText(h, text)
-    for _, key in ipairs(LOOKS) do
-        h.layers[key].still.fs:SetText(text)
-        h.layers[key].pulse.fs:SetText(text)
-    end
 end
 
 local function HideHolder(btn)
@@ -192,97 +222,100 @@ local function HideHolder(btn)
 end
 
 ---------------------------------------------------------
---  SECTION: Looks and conditions
+--  SECTION: Conditions
 ---------------------------------------------------------
--- Does condition c hold? k = casts left (nil for a free spell), pct = mana %,
--- ctx = what's known in Lua (combat, free).
-local function TestCond(c, k, pct, ctx)
-    local s = c.subject
-    if s == "combat" then return ctx.combat == (c.op ~= "isnot") end
-    if s == "free" then return ctx.free == (c.op ~= "isnot") end
-    local v
-    if s == "casts" then
-        if not k then return false end
-        v = k
-    elseif s == "mana" then
-        if not pct then return false end
-        v = math.floor(pct + 1e-9)
-    else
-        return false
-    end
-    local t, op = tonumber(c.value) or 0, c.op
-    if op == "lt" then return v < t
-    elseif op == "le" then return v <= t
-    elseif op == "eq" then return v == t
-    elseif op == "ne" then return v ~= t
-    elseif op == "gt" then return v > t
-    elseif op == "ge" then return v >= t
+-- Checks CastCount can answer in Lua even while mana is secret.
+local LUA_SUBJECTS = { free = true, combat = true, hover = true }
+
+local function Compare(v, op, t)
+    if op == "<" then return v < t
+    elseif op == "<=" then return v <= t
+    elseif op == "=" then return v == t
+    elseif op == "!=" then return v ~= t
+    elseif op == ">=" then return v >= t
+    elseif op == ">" then return v > t
     end
     return false
 end
-CC.TestCond = TestCond
 
--- Conditions whose outcome CastCount can know in Lua even when mana is secret.
-function CC.CondIsLuaKnown(c)
-    return c.subject == "combat" or c.subject == "free"
+-- k = casts left (nil when the spell is free now), pct = mana % (nil = unknown),
+-- ctx = what's known in Lua (free, combat, hover).
+local function TestCheck(ch, k, pct, ctx)
+    local s = ch.subject
+    if LUA_SUBJECTS[s] then return (ctx[s] and true or false) == (ch.op ~= "false") end
+    local t = tonumber(ch.value) or 0
+    if s == "casts" then
+        return k ~= nil and Compare(k, ch.op, t)
+    elseif s == "mana" then
+        return pct ~= nil and Compare(math.floor(pct + 1e-9), ch.op, t)
+    end
+    return false
 end
 
--- What a button shows: which look, its colour, pulsing, hidden, and which glows.
+local function Matches(c, k, pct, ctx)
+    local checks = c.checks or {}
+    if #checks == 0 then return false end
+    local any = c.match == "any"
+    for _, ch in ipairs(checks) do
+        local ok = TestCheck(ch, k, pct, ctx)
+        if any and ok then return true end
+        if not any and not ok then return false end
+    end
+    return not any
+end
+CC.ConditionMatches = Matches
+
+-- Can CastCount tell in Lua whether this condition holds (needed for sounds and
+-- chat messages)? Only when every check is one it can answer.
+function CC.CondIsLuaKnown(c)
+    for _, ch in ipairs(c.checks or {}) do
+        if not LUA_SUBJECTS[ch.subject] then return false end
+    end
+    return true
+end
+
+-- What a button shows at k casts / pct mana.
 local function StateAt(k, pct, ctx)
     local db = CC.db
-    local st = { glows = {}, pulse = false }
-    if ctx.free then
-        st.look, st.color, st.hidden = "normal", db.free.color, db.free.mode ~= "text"
-    else
-        st.look = (k == 0) and "oom" or (k <= db.lowAt) and "low" or "normal"
-        st.color, st.hidden = db.looks[st.look].color, false
-    end
-    for i, c in ipairs(db.conditions) do
-        if c.enabled and TestCond(c, k, pct, ctx) then
-            local a = c.action
-            if a == "color" then st.color = c.color
-            elseif a == "hide" then st.hidden = true
-            elseif a == "pulse" then st.pulse = true
-            elseif a == "glow" then st.glows[i] = true
+    local look = ctx.free and "free" or (k == 0) and "oom" or (k <= db.lowAt) and "low" or "normal"
+    local st = {
+        look = look, color = db.looks[look].color, alpha = 1, hidden = false,
+        dx = 0, dy = 0, pulse = false, glows = {}, tint = NO_TINT,
+    }
+    for _, c in ipairs(db.conditions) do
+        if c.enabled and Matches(c, k, pct, ctx) then
+            for _, pr in ipairs(c.props or {}) do
+                local t = pr.type
+                if t == "textcolor" and pr.color then st.color = pr.color
+                elseif t == "alpha" then st.alpha = math.max(0, math.min(100, tonumber(pr.value) or 100)) / 100
+                elseif t == "hide" then st.hidden = true
+                elseif t == "size" then st.size = tonumber(pr.value)
+                elseif t == "offset" then st.dx, st.dy = tonumber(pr.x) or 0, tonumber(pr.y) or 0
+                elseif t == "text" then st.text = pr.text
+                elseif t == "pulse" then st.pulse = true
+                elseif t == "glow" and pr.color then
+                    local c2 = pr.color
+                    st.glows[("%s:%.3f,%.3f,%.3f,%.3f"):format(pr.glowType or "button", c2.r, c2.g, c2.b, c2.a or 1)] =
+                        { glowType = pr.glowType or "button", color = c2 }
+                elseif t == "tint" and pr.color then st.tint = pr.color
+                end
             end
         end
     end
+    -- The text variant: everything about the text except colour and transparency.
+    st.variant = table.concat({ look, st.size or "", st.dx, st.dy, st.text or "#", st.pulse and 1 or 0 }, ":")
     return st
-end
-
-local function ApplyPlain(h, st)
-    for _, key in ipairs(LOOKS) do
-        local L = h.layers[key]
-        local on = (not st.hidden) and st.look == key
-        L.still:SetAlpha((on and not st.pulse) and 1 or 0)
-        L.pulse:SetAlpha((on and st.pulse) and 1 or 0)
-        if on then
-            local c = st.color
-            L.still.fs:SetTextColor(c.r, c.g, c.b, c.a or 1)
-            L.pulse.fs:SetTextColor(c.r, c.g, c.b, c.a or 1)
-        end
-    end
-    for i, c in ipairs(CC.db.conditions) do
-        if st.glows[i] then
-            Glow(h, i):SetAlpha(1)
-        elseif h.glows[i] then
-            h.glows[i]:SetAlpha(0)
-        end
-    end
-    for i, g in pairs(h.glows) do
-        if not CC.db.conditions[i] then g:SetAlpha(0) end
-    end
 end
 
 ---------------------------------------------------------
 --  SECTION: Curves (when mana is secret)
 ---------------------------------------------------------
 -- Forever hides the player's current mana from addons (a secret value, even out of
--- combat); max mana and spell costs stay readable. So CastCount works out, for every
--- stretch of mana % (x from 0 to 1), what the button should show, and hands the game
--- step curves: UnitPowerPercent evaluates them against the real mana. The count is a
--- step at every k * cost; mana % conditions add steps at their thresholds. The results
--- are secret too, but text, colour and alpha setters accept them.
+-- combat); max mana and spell costs stay readable. So CastCount works out what the
+-- button shows on every stretch of mana % (x from 0 to 1) and hands the game step
+-- curves; UnitPowerPercent evaluates them against the real mana. The count steps at
+-- every k * cost; mana % checks add steps at their thresholds. The results are secret
+-- too, but text, colour and alpha setters accept them.
 local lastMax = 1
 local function Mana()
     local cur, max = UnitPower("player", CC.MANA), UnitPowerMax("player", CC.MANA)
@@ -338,15 +371,21 @@ local function AlphaCurve()
 end
 
 -- Identifies every setting that feeds the plans, so they rebuild when one changes.
-local function SettingsSig()
-    local db = CC.db
-    local function C(c) return c and ("%.3f,%.3f,%.3f,%.3f"):format(c.r, c.g, c.b, c.a or 1) or "-" end
-    local parts = { db.lowAt, db.free.mode, C(db.free.color) }
-    for _, key in ipairs(LOOKS) do parts[#parts + 1] = C(db.looks[key].color) end
-    for _, c in ipairs(db.conditions) do
-        parts[#parts + 1] = table.concat({ tostring(c.enabled), c.subject, c.op, tostring(c.value), c.action, C(c.color) }, ",")
+local function Ser(v)
+    if type(v) ~= "table" then return tostring(v) end
+    local keys = {}
+    for k in pairs(v) do keys[#keys + 1] = tostring(k) end
+    table.sort(keys)
+    local out = {}
+    for _, k in ipairs(keys) do
+        local x = v[k]
+        if x == nil then x = v[tonumber(k)] end
+        out[#out + 1] = k .. "=" .. Ser(x)
     end
-    return table.concat(parts, "|")
+    return "{" .. table.concat(out, ",") .. "}"
+end
+local function SettingsSig()
+    return Ser({ CC.db.lowAt, CC.db.looks, CC.db.conditions })
 end
 
 -- One value per stretch: a constant when it never changes, otherwise a step curve.
@@ -365,15 +404,15 @@ local function Series(B, states, fn)
     return { curve = curve }
 end
 
--- The colour a look's text has wherever it shows (stretches where it's hidden
--- borrow a neighbour's colour, so the curve has no gaps).
-local function ColorSeries(B, states, key)
-    local cols, last = {}, nil
+-- A colour per stretch; fn may return nil where it doesn't matter (hidden), and
+-- those stretches borrow a neighbour's colour so the curve has no gaps.
+local function ColorSeries(B, states, fn, fallback)
+    local cols, any = {}, false
     for i, st in ipairs(states) do
-        if st.look == key then last = st.color end
-        cols[i] = (st.look == key) and st.color or nil
+        cols[i] = fn(st)
+        if cols[i] then any = true end
     end
-    if not last then return { const = CC.db.looks[key].color } end
+    if not any then return { const = fallback } end
     local fill
     for i = #states, 1, -1 do
         if cols[i] then fill = cols[i] else cols[i] = fill end
@@ -385,7 +424,7 @@ local function ColorSeries(B, states, key)
     for i = 2, #cols do
         if cols[i] ~= first then same = false break end
     end
-    if same then return { const = first } end
+    if same or not HAS_CURVES then return { const = first } end
     local curve, prev = C_CurveUtil.CreateColorCurve(), nil
     curve:SetType(Enum.LuaCurveType.Step)
     for i, c in ipairs(cols) do
@@ -397,22 +436,51 @@ local function ColorSeries(B, states, key)
     return { curve = curve }
 end
 
--- Everything a button with this cost (nil = free spell) shows, across all mana levels.
+-- Turns the states of every stretch into what the holder needs.
+local function MakePlan(B, states)
+    local plan = { variants = {}, glows = {} }
+    for _, st in ipairs(states) do
+        if not plan.variants[st.variant] then
+            plan.variants[st.variant] = {
+                spec = { look = st.look, size = st.size, dx = st.dx, dy = st.dy, text = st.text, pulse = st.pulse },
+            }
+        end
+        for key, gl in pairs(st.glows) do
+            plan.glows[key] = plan.glows[key] or { glowType = gl.glowType, color = gl.color }
+        end
+    end
+    for key, v in pairs(plan.variants) do
+        v.alpha = Series(B, states, function(st) return (st.variant == key and not st.hidden) and st.alpha or 0 end)
+        v.color = ColorSeries(B, states, function(st) return st.variant == key and st.color or nil end,
+            CC.db.looks[v.spec.look].color)
+    end
+    for key, gl in pairs(plan.glows) do
+        gl.alpha = Series(B, states, function(st) return st.glows[key] and 1 or 0 end)
+    end
+    plan.tint = ColorSeries(B, states, function(st) return st.tint end, NO_TINT)
+    return plan
+end
+
+-- Everything a button with this cost (nil = free right now) shows, across all mana levels.
 local function Plan(cost, max, ctx, sig)
-    local key = (cost or "free") .. ":" .. max .. ":" .. (ctx.combat and 1 or 0) .. ":" .. sig
+    local key = table.concat({ cost or "free", max, ctx.combat and 1 or 0, ctx.hover and 1 or 0, sig }, ":")
     local plan = plans[key]
     if plan then return plan end
-    if planCount > 100 then wipe(plans); planCount = 0 end
+    if planCount > 150 then wipe(plans); planCount = 0 end
 
     local raw = { 0 }
     if cost then
         for k = 1, math.min(MAX_COUNT, math.floor(max / cost)) do raw[#raw + 1] = StepX(k, cost, max) end
     end
     for _, c in ipairs(CC.db.conditions) do
-        if c.enabled and c.subject == "mana" then
-            local t = tonumber(c.value) or 0
-            for _, x in ipairs({ t / 100, (t + 1) / 100 }) do
-                if x > 0 and x < 1 then raw[#raw + 1] = x end
+        if c.enabled then
+            for _, ch in ipairs(c.checks or {}) do
+                if ch.subject == "mana" then
+                    local t = tonumber(ch.value) or 0
+                    for _, x in ipairs({ t / 100, (t + 1) / 100 }) do
+                        if x > 0 and x < 1 then raw[#raw + 1] = x end
+                    end
+                end
             end
         end
     end
@@ -428,20 +496,7 @@ local function Plan(cost, max, ctx, sig)
         local k = cost and math.floor(mid * max / cost + 1e-9) or nil
         states[i] = StateAt(k, mid * 100, ctx)
     end
-
-    plan = { alpha = {}, color = {}, glow = {} }
-    for _, look in ipairs(LOOKS) do
-        plan.alpha[look] = {
-            still = Series(B, states, function(st) return (not st.hidden and st.look == look and not st.pulse) and 1 or 0 end),
-            pulse = Series(B, states, function(st) return (not st.hidden and st.look == look and st.pulse) and 1 or 0 end),
-        }
-        plan.color[look] = ColorSeries(B, states, look)
-    end
-    for i, c in ipairs(CC.db.conditions) do
-        if c.enabled and c.action == "glow" then
-            plan.glow[i] = Series(B, states, function(st) return st.glows[i] and 1 or 0 end)
-        end
-    end
+    plan = MakePlan(B, states)
     plans[key] = plan
     planCount = planCount + 1
     return plan
@@ -456,37 +511,37 @@ local function SetAlphaFrom(frame, entry)
     end
 end
 
-local function SetColorFrom(fs1, fs2, entry)
-    local c = entry.const
-    if c then
-        fs1:SetTextColor(c.r, c.g, c.b, c.a or 1)
-        fs2:SetTextColor(c.r, c.g, c.b, c.a or 1)
-        return
+local function ColorFrom(entry)
+    if entry.const then
+        local c = entry.const
+        return c.r, c.g, c.b, c.a or 1
     end
     local col = Evaluate(entry.curve)
-    if col and col.GetRGBA then
-        fs1:SetTextColor(col:GetRGBA())
-        fs2:SetTextColor(col:GetRGBA())
-    end
+    if col and col.GetRGBA then return col:GetRGBA() end
+    return 1, 1, 1, 1
 end
 
-local function ApplyPlan(h, plan)
-    for _, key in ipairs(LOOKS) do
-        local L = h.layers[key]
-        SetAlphaFrom(L.still, plan.alpha[key].still)
-        SetAlphaFrom(L.pulse, plan.alpha[key].pulse)
-        SetColorFrom(L.still.fs, L.pulse.fs, plan.color[key])
+local function ApplyPlan(h, plan, countText)
+    local inUse = {}
+    for key in pairs(plan.variants) do inUse[key] = true end
+    for key, v in pairs(plan.variants) do
+        local f = Layer(h, key, v.spec, inUse)
+        local text = v.spec.text
+        if v.spec.look == "free" and not text then text = CC.db.looks.free.text end
+        f.fs:SetText(text or countText or "")
+        SetAlphaFrom(f, v.alpha)
+        f.fs:SetTextColor(ColorFrom(v.color))
     end
-    for i in ipairs(CC.db.conditions) do
-        if plan.glow[i] then
-            SetAlphaFrom(Glow(h, i), plan.glow[i])
-        elseif h.glows[i] then
-            h.glows[i]:SetAlpha(0)
-        end
+    for key, f in pairs(h.layers) do
+        if not inUse[key] then f:SetAlpha(0) end
     end
-    for i, g in pairs(h.glows) do
-        if not CC.db.conditions[i] then g:SetAlpha(0) end
+    for key, gl in pairs(plan.glows) do
+        SetAlphaFrom(GlowGate(h, key, gl.glowType, gl.color), gl.alpha)
     end
+    for key, g in pairs(h.glows) do
+        if not plan.glows[key] then g:SetAlpha(0) end
+    end
+    h.tint:SetVertexColor(ColorFrom(plan.tint))
 end
 
 ---------------------------------------------------------
@@ -506,20 +561,26 @@ local function Visibility(btn, mana, max)
     return HAS_CURVES and "notfull" or true
 end
 
--- soundNow collects which sound conditions hold on some selected button.
-function CC.UpdateButton(btn, mana, max, sig, soundNow)
+-- Spells seen costing mana this session: free from then on means "free right now".
+CC.everMana = CC.everMana or {}
+
+-- condNow collects the conditions (for sounds and chat) that hold on some selected button.
+function CC.UpdateButton(btn, mana, max, sig, condNow)
     local spell = CC.ButtonSpell(btn)
     if not spell then return HideHolder(btn) end
     local name = CC.SpellName(spell)
     if name and CC.char.blacklist[name] then return HideHolder(btn) end
     local kind, cost = CC.SpellCost(spell)
-    if kind ~= "mana" and kind ~= "free" then return HideHolder(btn) end
-    local ctx = { combat = CC.inCombat, free = (kind == "free") }
-    if kind == "free" then cost = nil end
+    local freeNow = kind == "free" and CC.everMana[spell]
+    if kind ~= "mana" and not freeNow then return HideHolder(btn) end
+    if freeNow then cost = nil end
+    local ctx = { combat = CC.inCombat, free = freeNow and true or false, hover = hovered[btn] and true or false }
 
+    local k = (mana and cost) and math.floor(mana / cost) or nil
+    local pct = mana and (mana / max * 100) or nil
     for _, c in ipairs(CC.db.conditions) do
-        if c.enabled and c.action == "sound" and CC.CondIsLuaKnown(c) and TestCond(c, nil, nil, ctx) then
-            soundNow[c] = true
+        if c.enabled and not condNow[c] and (mana or CC.CondIsLuaKnown(c)) and Matches(c, k, pct, ctx) then
+            condNow[c] = true
         end
     end
 
@@ -528,18 +589,15 @@ function CC.UpdateButton(btn, mana, max, sig, soundNow)
 
     local h = Holder(btn)
     if mana then
-        local k = cost and math.floor(mana / cost) or nil
-        SetAllText(h, cost and k or CC.db.free.text)
-        ApplyPlain(h, StateAt(k, mana / max * 100, ctx))
+        ApplyPlan(h, MakePlan({ 0 }, { StateAt(k, pct, ctx) }), k and tostring(k))
     elseif HAS_CURVES then
-        local text = CC.db.free.text
+        local countText
         if cost then
             local n = Evaluate(CountCurve(cost, max))
             if n == nil then return HideHolder(btn) end
-            text = string.format("%d", n)
+            countText = string.format("%d", n)
         end
-        SetAllText(h, text)
-        ApplyPlan(h, Plan(cost, max, ctx, sig))
+        ApplyPlan(h, Plan(cost, max, ctx, sig), countText)
     else
         return HideHolder(btn)
     end
@@ -553,17 +611,25 @@ function CC.UpdateButton(btn, mana, max, sig, soundNow)
     h:Show()
 end
 
--- Sounds play when a condition starts to hold (not while it keeps holding).
-local soundWas, soundsReady = {}, false
-local function PlaySounds(soundNow)
+-- Sounds and chat messages fire when a condition starts to hold (not while it keeps holding).
+local condWas, condsReady = {}, false
+local function FireTriggers(condNow)
     for _, c in ipairs(CC.db.conditions) do
-        if c.enabled and c.action == "sound" then
-            local now = soundNow[c] or false
-            if now and not soundWas[c] and soundsReady then CC.PlaySound(c.sound) end
-            soundWas[c] = now
+        if c.enabled then
+            local now = condNow[c] or false
+            if now and not condWas[c] and condsReady then
+                for _, pr in ipairs(c.props or {}) do
+                    if pr.type == "sound" then
+                        CC.PlaySound(pr.sound)
+                    elseif pr.type == "chat" and pr.text and pr.text ~= "" then
+                        DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99CastCount|r: " .. pr.text)
+                    end
+                end
+            end
+            condWas[c] = now
         end
     end
-    soundsReady = true
+    condsReady = true
 end
 
 function CC.Refresh()
@@ -575,19 +641,12 @@ function CC.Refresh()
     for btn, h in pairs(holders) do
         if not selected[btn:GetName() or ""] then h:Hide() end
     end
-    local soundNow = {}
-    -- Combat doesn't depend on any button.
-    for _, c in ipairs(CC.db.conditions) do
-        if c.enabled and c.action == "sound" and c.subject == "combat"
-            and TestCond(c, nil, nil, { combat = CC.inCombat }) then
-            soundNow[c] = true
-        end
-    end
+    local condNow = {}
     for name in pairs(selected) do
         local btn = _G[name]
-        if type(btn) == "table" and btn.GetObjectType then CC.UpdateButton(btn, mana, max, sig, soundNow) end
+        if type(btn) == "table" and btn.GetObjectType then CC.UpdateButton(btn, mana, max, sig, condNow) end
     end
-    PlaySounds(soundNow)
+    FireTriggers(condNow)
 end
 
 ---------------------------------------------------------

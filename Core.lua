@@ -17,27 +17,32 @@ CC.Color = Color
 ---------------------------------------------------------
 --  SECTION: Defaults
 ---------------------------------------------------------
--- The three looks a count can have, each a full text style.
-local function Look(r, g, b)
+-- The looks a count can have, each a full text style. "Free" is for a spell that
+-- normally costs mana but is free right now (Clearcasting and the like); it shows
+-- its own text (an infinity sign by default) instead of a number.
+local function Look(r, g, b, font)
     return {
-        font = "Friz Quadrata TT", size = 18, outline = "OUTLINE", shadow = false,
+        font = font or "Friz Quadrata TT", size = 18, outline = "OUTLINE", shadow = false,
         color = Color(r, g, b), anchor = "CENTER", x = 0, y = 0,
     }
 end
-CC.LOOKS = { "normal", "low", "oom" }
-CC.LOOK_LABELS = { normal = "Normal", low = "Low count", oom = "Out of mana" }
+CC.LOOKS = { "normal", "low", "oom", "free" }
+CC.LOOK_LABELS = { normal = "Normal", low = "Low count", oom = "Out of mana", free = "Free right now" }
+local freeLook = Look(0.4, 0.8, 1, "Arial Narrow")
+freeLook.text = "\226\136\158"   -- the infinity sign, UTF-8
+freeLook.size = 22
 
 -- Account-wide: how the numbers look, when they show, and the conditions.
 CC.DEFAULTS = {
-    looks = { normal = Look(0, 1, 0), low = Look(1, 0.65, 0), oom = Look(1, 0.2, 0.2) },
+    looks = { normal = Look(0, 1, 0), low = Look(1, 0.65, 0), oom = Look(1, 0.2, 0.2), free = freeLook },
     lowAt = 3,   -- "Low count" look from 1 up to this many casts; 0 casts = "Out of mana"
     show = {
         inCombat = true, outOfCombat = true, oocOnlyNotFull = false,
         onHover = true, macros = true,
     },
-    free = { mode = "hide", text = "Free", color = Color(0.4, 0.8, 1) },
-    -- { enabled, subject = casts|mana|combat|free, op = lt|le|eq|ne|gt|ge (is|isnot for
-    --   combat/free), value, action = color|hide|glow|pulse|sound, color, sound }
+    -- Each: { enabled, collapsed, match = "all"|"any",
+    --   checks = { { subject = casts|mana|free|combat|hover, op = < <= = != >= > | true false, value } },
+    --   props = { { type = textcolor|alpha|hide|size|offset|text|pulse|glow|tint|sound|chat, ... } } }
     conditions = {},
 }
 
@@ -82,7 +87,20 @@ local function Migrate(db)
         end
         db.lowAt = lowAt
     end
-    db.text, db.rules = nil, nil
+    db.text, db.rules, db.free = nil, nil, nil
+
+    -- Earlier test builds had one check and one action per condition.
+    local OPS = { lt = "<", le = "<=", eq = "=", ne = "!=", gt = ">", ge = ">=", is = "true", isnot = "false" }
+    local PROPS = { color = "textcolor", hide = "hide", glow = "glow", pulse = "pulse", sound = "sound" }
+    for i, c in ipairs(db.conditions or {}) do
+        if not c.checks then
+            db.conditions[i] = {
+                enabled = c.enabled, match = "all",
+                checks = { { subject = (c.subject == "free") and "free" or c.subject, op = OPS[c.op] or c.op, value = c.value } },
+                props = { { type = PROPS[c.action] or "textcolor", color = c.color, sound = c.sound, glowType = "button" } },
+            }
+        end
+    end
 end
 
 -- Puts one section of the account settings back to its defaults

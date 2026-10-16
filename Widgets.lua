@@ -69,7 +69,8 @@ end
 ---------------------------------------------------------
 --  SECTION: Slider
 ---------------------------------------------------------
-function UI.Slider(parent, label, minV, maxV, step, width, get, set)
+-- With arrows, < and > buttons sit at the ends: a click moves 1 step, Shift 5, Ctrl 10.
+function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetSize(width, 34)
     local title = UI.Text(holder, label, "GameFontNormalSmall")
@@ -79,8 +80,9 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set)
 
     local s = CreateFrame("Slider", nil, holder, "BackdropTemplate")
     s:SetOrientation("HORIZONTAL")
-    s:SetPoint("TOPLEFT", 0, -16)
-    s:SetPoint("TOPRIGHT", 0, -16)
+    local inset = arrows and 22 or 0
+    s:SetPoint("TOPLEFT", inset, -16)
+    s:SetPoint("TOPRIGHT", -inset, -16)
     s:SetHeight(12)
     UI.Backdrop(s, 0.1, 0.1, 0.11, 1)
     s:SetThumbTexture(WHITE)
@@ -100,6 +102,18 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set)
     end)
     s:EnableMouseWheel(true)
     s:SetScript("OnMouseWheel", function(self, delta) self:SetValue(self:GetValue() + delta * step) end)
+
+    if arrows then
+        local function Nudge(dir)
+            local n = (IsControlKeyDown() and 10) or (IsShiftKeyDown() and 5) or 1
+            set(math.max(minV, math.min(maxV, get() + dir * n * step)))
+            holder:Refresh()
+        end
+        local left = UI.Button(holder, "<", 20, 18, function() Nudge(-1) end)
+        left:SetPoint("TOPLEFT", 0, -13)
+        local right = UI.Button(holder, ">", 20, 18, function() Nudge(1) end)
+        right:SetPoint("TOPRIGHT", 0, -13)
+    end
 
     function holder:Refresh()
         self.updating = true
@@ -444,22 +458,24 @@ end
 --  SECTION: Edit boxes
 ---------------------------------------------------------
 -- Saved on Enter and when focus is lost (OnTextChanged's user-input flag isn't
--- reliable on Forever).
+-- reliable on Forever). numeric: true = whole numbers, "signed" = may be negative.
 function UI.Edit(parent, width, numeric, get, set)
     local e = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
     e:SetSize(width, 20)
     e:SetAutoFocus(false)
-    if numeric then
+    if numeric == "signed" then
+        e:SetMaxLetters(4)
+    elseif numeric then
         e:SetNumeric(true)
         e:SetMaxLetters(3)
     else
-        e:SetMaxLetters(12)
+        e:SetMaxLetters(60)
     end
     local function Save()
         local text = e:GetText()
         if numeric then
             local v = tonumber(text)
-            if v then set(v) end
+            if v then set(math.floor(v + 0.5)) end
         elseif text ~= "" then
             set(text)
         end
