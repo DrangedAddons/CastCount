@@ -130,12 +130,90 @@ end
 ---------------------------------------------------------
 --  SECTION: Counting
 ---------------------------------------------------------
-local lastMana, lastMax = 0, 1
+-- Forever hides the player's current mana from addons (a secret value, even out of
+-- combat); max mana and spell costs stay readable. So when mana is secret the count
+-- is worked out by the game: UnitPowerPercent evaluates a curve against mana %, and
+-- a step curve with a step at every k * cost (as a fraction of max) gives floor(mana / cost).
+-- The result is secret too, but text, colour and alpha setters accept it.
+local lastMax = 1
 local function Mana()
     local cur, max = UnitPower("player", CC.MANA), UnitPowerMax("player", CC.MANA)
-    if Plain(cur) then lastMana = cur end
-    if Plain(max) then lastMax = max end
-    return lastMana, lastMax
+    if Plain(max) and max > 0 then lastMax = max end
+    return Plain(cur) and cur or nil, lastMax
+end
+
+local HAS_CURVES = C_CurveUtil and C_CurveUtil.CreateCurve and C_CurveUtil.CreateColorCurve
+    and UnitPowerPercent and Enum and Enum.LuaCurveType and true or false
+local MAX_COUNT = 999
+local EPS = 1e-6
+local countCurves, colorCurves, alphaCurve = {}, {}, nil
+local colorCurveCount = 0
+CC.curveError = nil
+
+-- x where the count reaches k: k casts' worth of mana, as a fraction of max.
+local function StepX(k, cost, max)
+    if k == 0 then return 0 end
+    return math.max(0, k * cost / max - EPS)
+end
+
+local function CountCurve(cost, max)
+    local key = cost .. ":" .. max
+    local c = countCurves[key]
+    if c then return c end
+    c = C_CurveUtil.CreateCurve()
+    c:SetType(Enum.LuaCurveType.Step)
+    for k = 0, math.min(MAX_COUNT, math.floor(max / cost)) do
+        c:AddPoint(StepX(k, cost, max), k)
+    end
+    countCurves[key] = c
+    return c
+end
+
+-- Identifies the current colour settings, so colour curves rebuild when they change.
+local function ColorSig()
+    local function C(c) return ("%.3f,%.3f,%.3f,%.3f"):format(c.r, c.g, c.b, c.a or 1) end
+    local parts = { C(CC.db.text.color), CC.db.rules.enabled and "on" or "off" }
+    for _, rule in ipairs(CC.db.rules.list) do parts[#parts + 1] = rule.at .. "=" .. C(rule.color) end
+    return table.concat(parts, "|")
+end
+
+local function ColorCurve(cost, max, sig)
+    local key = cost .. ":" .. max .. ":" .. sig
+    local c = colorCurves[key]
+    if c then return c end
+    if colorCurveCount > 200 then wipe(colorCurves); colorCurveCount = 0 end
+    c = C_CurveUtil.CreateColorCurve()
+    c:SetType(Enum.LuaCurveType.Step)
+    local prev
+    for k = 0, math.min(MAX_COUNT, math.floor(max / cost)) do
+        local col = CC.CountColor(k)
+        if col ~= prev then
+            c:AddPoint(StepX(k, cost, max), CreateColor(col.r, col.g, col.b, col.a or 1))
+            prev = col
+        end
+    end
+    colorCurves[key] = c
+    colorCurveCount = colorCurveCount + 1
+    return c
+end
+
+-- Alpha 1 below full mana, 0 at full (for "only when my mana isn't full").
+local function AlphaCurve()
+    if alphaCurve then return alphaCurve end
+    alphaCurve = C_CurveUtil.CreateCurve()
+    alphaCurve:SetType(Enum.LuaCurveType.Step)
+    alphaCurve:AddPoint(0, 1)
+    alphaCurve:AddPoint(1 - EPS, 0)
+    return alphaCurve
+end
+
+local function Evaluate(curve)
+    local ok, v = pcall(UnitPowerPercent, "player", CC.MANA, false, curve)
+    if not ok then
+        CC.curveError = tostring(v)
+        return nil
+    end
+    return v
 end
 
 -- Colour for a count: the lowest low-count rule it falls under, otherwise the
@@ -152,31 +230,67 @@ function CC.CountColor(n)
     return CC.db.text.color
 end
 
--- CC.preview (set while the Text/Rules/Blacklist tabs are open) shows every
--- selected count so style changes can be seen.
-local function Visible(btn, mana, max)
+-- true = show, false = hide, "notfull" = show only while mana isn't full (mana is
+-- secret, so the game decides through an alpha curve). CC.preview (set while the
+-- Text/Rules/Blacklist tabs are open) shows every selected count so style changes can be seen.
+local function Visibility(btn, mana, max)
     if CC.preview then return true end
     local s = CC.db.show
     if s.onHover and hovered[btn] then return true end
     if CC.inCombat then return s.inCombat end
     if not s.outOfCombat then return false end
-    return not (s.oocOnlyNotFull and mana >= max)
+    if not s.oocOnlyNotFull then return true end
+    if mana then return mana < max end
+    return HAS_CURVES and "notfull" or true
 end
 
-function CC.UpdateButton(btn, mana, max)
-    if not Visible(btn, mana, max) then return HideText(btn) end
+-- The count when mana is secret: the number and colour come from curves.
+local function ShowSecretCount(btn, cost, max, sig)
+    local count = Evaluate(CountCurve(cost, max))
+    if count == nil then return HideText(btn) end
+    local h = Holder(btn)
+    local want = math.min(10000, btn:GetFrameLevel() + 10)
+    if h:GetFrameLevel() < want then h:SetFrameLevel(want) end
+    h.text:SetText(string.format("%d", count))
+    local color = Evaluate(ColorCurve(cost, max, sig))
+    if color and color.GetRGBA then
+        h.text:SetTextColor(color:GetRGBA())
+    else
+        local c = CC.db.text.color
+        h.text:SetTextColor(c.r, c.g, c.b, c.a or 1)
+    end
+    h.text:Show()
+end
+
+function CC.UpdateButton(btn, mana, max, sig)
+    local vis = Visibility(btn, mana, max)
+    if not vis then return HideText(btn) end
     local spell = CC.ButtonSpell(btn)
     if not spell then return HideText(btn) end
     local name = CC.SpellName(spell)
     if name and CC.char.blacklist[name] then return HideText(btn) end
     local kind, cost = CC.SpellCost(spell)
     if kind == "mana" then
-        local n = math.floor(mana / cost)
-        ShowText(btn, n, CC.CountColor(n))
+        if mana then
+            local n = math.floor(mana / cost)
+            ShowText(btn, n, CC.CountColor(n))
+        elseif HAS_CURVES then
+            ShowSecretCount(btn, cost, max, sig)
+        else
+            return HideText(btn)
+        end
     elseif kind == "free" and CC.db.free.mode == "text" then
         ShowText(btn, CC.db.free.text, CC.db.free.color)
     else
-        HideText(btn)
+        return HideText(btn)
+    end
+    local h = holders[btn]
+    if not h then return end
+    if vis == "notfull" then
+        local a = Evaluate(AlphaCurve())
+        h:SetAlpha(a == nil and 1 or a)
+    else
+        h:SetAlpha(1)
     end
 end
 
@@ -184,13 +298,14 @@ function CC.Refresh()
     CC.dirty = false
     if not CC.db then return end
     local mana, max = Mana()
+    local sig = (not mana and HAS_CURVES) and ColorSig() or ""
     local selected = CC.char.buttons
     for btn, h in pairs(holders) do
         if not selected[btn:GetName() or ""] then h.text:Hide() end
     end
     for name in pairs(selected) do
         local btn = _G[name]
-        if type(btn) == "table" and btn.GetObjectType then CC.UpdateButton(btn, mana, max) end
+        if type(btn) == "table" and btn.GetObjectType then CC.UpdateButton(btn, mana, max, sig) end
     end
 end
 
@@ -242,9 +357,10 @@ end
 function CC.Debug()
     local cur, max = UnitPower("player", CC.MANA), UnitPowerMax("player", CC.MANA)
     local ptype = UnitPowerType("player")
-    CC.Print(("mana %s / %s (secret API %s), power type %s, form %s, in combat %s, last used mana %s / %s")
+    CC.Print(("mana %s / %s (secret API %s), power type %s, form %s, in combat %s, curves %s, curve error %s")
         :format(Show(cur), Show(max), issecretvalue and "yes" or "no", Show(ptype),
-            Show(GetShapeshiftForm and GetShapeshiftForm()), tostring(CC.inCombat), lastMana, lastMax))
+            Show(GetShapeshiftForm and GetShapeshiftForm()), tostring(CC.inCombat),
+            HAS_CURVES and "yes" or "no", tostring(CC.curveError)))
     local n = 0
     for name in pairs(CC.char.buttons) do
         local btn = _G[name]
