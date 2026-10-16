@@ -235,6 +235,69 @@ function UI.List(parent, width, rowH, maxRows, render, onClick)
 end
 
 ---------------------------------------------------------
+--  SECTION: Scroll area
+---------------------------------------------------------
+-- Fills parent with a scrolling area; widgets go on the returned content frame,
+-- and sf:SetContentHeight(h) says how tall it is.
+function UI.ScrollArea(parent, contentWidth)
+    local sf = CreateFrame("ScrollFrame", nil, parent)
+    sf:SetPoint("TOPLEFT")
+    sf:SetPoint("BOTTOMRIGHT", -12, 0)
+    if sf.SetClipsChildren then sf:SetClipsChildren(true) end
+    local content = CreateFrame("Frame", nil, sf)
+    content:SetSize(contentWidth or 630, 10)
+    sf:SetScrollChild(content)
+
+    local track = CreateFrame("Frame", nil, parent)
+    track:SetPoint("TOPRIGHT", 0, 0)
+    track:SetPoint("BOTTOMRIGHT", 0, 0)
+    track:SetWidth(6)
+    local tbg = track:CreateTexture(nil, "BACKGROUND")
+    tbg:SetAllPoints()
+    tbg:SetColorTexture(0.12, 0.12, 0.12, 1)
+    local thumb = track:CreateTexture(nil, "OVERLAY")
+    thumb:SetColorTexture(0.55, 0.55, 0.55, 1)
+    thumb:SetWidth(6)
+
+    sf.contentH = 10
+    local function MaxScroll() return math.max(0, sf.contentH - (sf:GetHeight() or 0)) end
+    function sf:UpdateThumb()
+        local max = MaxScroll()
+        track:SetShown(max > 0)
+        if max <= 0 then return end
+        local th, vh = track:GetHeight(), self:GetHeight()
+        local h = math.max(16, th * vh / self.contentH)
+        thumb:SetHeight(h)
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOP", track, "TOP", 0, -(th - h) * (self:GetVerticalScroll() / max))
+    end
+    function sf:ScrollTo(v)
+        self:SetVerticalScroll(math.max(0, math.min(MaxScroll(), v)))
+        self:UpdateThumb()
+    end
+    function sf:ScrollToBottom() self:ScrollTo(MaxScroll()) end
+    function sf:SetContentHeight(h)
+        self.contentH = h
+        content:SetHeight(h)
+        self:ScrollTo(self:GetVerticalScroll() or 0)
+    end
+    sf:EnableMouseWheel(true)
+    sf:SetScript("OnMouseWheel", function(self, delta) self:ScrollTo((self:GetVerticalScroll() or 0) - delta * 40) end)
+    sf:SetScript("OnSizeChanged", function(self) self:ScrollTo(self:GetVerticalScroll() or 0) end)
+    local function FromCursor()
+        local _, y = GetCursorPosition()
+        y = y / track:GetEffectiveScale()
+        local top, h = track:GetTop(), track:GetHeight()
+        if top and h and h > 0 then sf:ScrollTo((top - y) / h * MaxScroll()) end
+    end
+    track:EnableMouse(true)
+    track:SetScript("OnMouseDown", function(self) FromCursor(); self:SetScript("OnUpdate", FromCursor) end)
+    track:SetScript("OnMouseUp", function(self) self:SetScript("OnUpdate", nil) end)
+    track:Hide()
+    return sf, content
+end
+
+---------------------------------------------------------
 --  SECTION: Dropdown
 ---------------------------------------------------------
 -- One shared pop-up list for every dropdown. Items: { value, label, font? }.

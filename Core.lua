@@ -17,24 +17,28 @@ CC.Color = Color
 ---------------------------------------------------------
 --  SECTION: Defaults
 ---------------------------------------------------------
--- Account-wide: how the numbers look and when they show.
-CC.DEFAULTS = {
-    text = {
+-- The three looks a count can have, each a full text style.
+local function Look(r, g, b)
+    return {
         font = "Friz Quadrata TT", size = 18, outline = "OUTLINE", shadow = false,
-        color = Color(0, 1, 0), anchor = "CENTER", x = 0, y = 0,
-    },
+        color = Color(r, g, b), anchor = "CENTER", x = 0, y = 0,
+    }
+end
+CC.LOOKS = { "normal", "low", "oom" }
+CC.LOOK_LABELS = { normal = "Normal", low = "Low count", oom = "Out of mana" }
+
+-- Account-wide: how the numbers look, when they show, and the conditions.
+CC.DEFAULTS = {
+    looks = { normal = Look(0, 1, 0), low = Look(1, 0.65, 0), oom = Look(1, 0.2, 0.2) },
+    lowAt = 3,   -- "Low count" look from 1 up to this many casts; 0 casts = "Out of mana"
     show = {
         inCombat = true, outOfCombat = true, oocOnlyNotFull = false,
         onHover = true, macros = true,
     },
     free = { mode = "hide", text = "Free", color = Color(0.4, 0.8, 1) },
-    rules = {
-        enabled = true,
-        list = {
-            { at = 0, color = Color(1, 0.2, 0.2) },
-            { at = 3, color = Color(1, 0.65, 0) },
-        },
-    },
+    -- { enabled, subject = casts|mana|combat|free, op = lt|le|eq|ne|gt|ge (is|isnot for
+    --   combat/free), value, action = color|hide|glow|pulse|sound, color, sound }
+    conditions = {},
 }
 
 -- Per character: which buttons show counts (by button name) and which
@@ -49,21 +53,43 @@ local function CopyDeep(v)
 end
 CC.CopyDeep = CopyDeep
 
--- Fills missing keys. Lists (rules.list) are copied whole only when missing,
--- so a user who removed the default rules doesn't get them back.
+-- Fills missing keys. Lists (conditions) are copied whole only when missing,
+-- so a user's list is never added to.
 local function FillDefaults(dst, src)
     for k, v in pairs(src) do
         if dst[k] == nil then
             dst[k] = CopyDeep(v)
-        elseif type(v) == "table" and type(dst[k]) == "table" and v[1] == nil then
+        elseif type(v) == "table" and type(dst[k]) == "table" and v[1] == nil and next(v) ~= nil then
             FillDefaults(dst[k], v)
         end
     end
 end
 
--- Puts one section of the account settings (text, show, free, rules) back to its defaults.
+-- 2.0 test builds had one text style plus colour rules: turn them into looks.
+local function Migrate(db)
+    if db.text and not db.looks then
+        local t = db.text
+        db.looks = { normal = CopyDeep(t), low = CopyDeep(t), oom = CopyDeep(t) }
+        db.looks.low.color, db.looks.oom.color = Color(1, 0.65, 0), Color(1, 0.2, 0.2)
+        local lowAt
+        for _, rule in ipairs(db.rules and db.rules.list or {}) do
+            if rule.at == 0 then
+                db.looks.oom.color = CopyDeep(rule.color)
+            elseif not lowAt or rule.at > lowAt then
+                lowAt = rule.at
+                db.looks.low.color = CopyDeep(rule.color)
+            end
+        end
+        db.lowAt = lowAt
+    end
+    db.text, db.rules = nil, nil
+end
+
+-- Puts one section of the account settings back to its defaults
+-- ("looks" also resets the low-count threshold).
 function CC.ResetSection(key)
     CC.db[key] = CopyDeep(CC.DEFAULTS[key])
+    if key == "looks" then CC.db.lowAt = CC.DEFAULTS.lowAt end
 end
 
 ---------------------------------------------------------
@@ -149,6 +175,7 @@ end
 CC.On("ADDON_LOADED", function(_, name)
     if name ~= ADDON then return end
     CastCountDB = CastCountDB or {}
+    Migrate(CastCountDB)
     FillDefaults(CastCountDB, CC.DEFAULTS)
     CC.db = CastCountDB
     CastCountCharDB = CastCountCharDB or {}

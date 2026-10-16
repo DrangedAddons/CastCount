@@ -2,7 +2,7 @@
 --  CastCount - Config window
 --  Author: Dranged
 ---------------------------------------------------------
--- /castcount opens it. Tabs: Buttons (the picker), Blacklist, Text, Visibility, Rules.
+-- /castcount opens it. Tabs: Buttons (the picker), Blacklist, Text, Visibility, Conditions.
 
 local ADDON, CC = ...
 local UI = CC.UI
@@ -18,10 +18,10 @@ local TABS = {
     { key = "blacklist",  label = "Blacklist" },
     { key = "text",       label = "Text" },
     { key = "visibility", label = "Visibility" },
-    { key = "rules",      label = "Rules" },
+    { key = "conditions", label = "Conditions" },
 }
 -- Tabs where every selected count shows, whatever the visibility settings say.
-local PREVIEW = { blacklist = true, text = true, rules = true }
+local PREVIEW = { blacklist = true, text = true, conditions = true }
 
 local function Version()
     local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -46,10 +46,6 @@ local function Refresher(fn) return UI.Track({ Refresh = fn }) end
 
 local function Changed()
     CC.MarkDirty()
-end
-
-local function StyleChanged()
-    CC.ApplyStyle()
 end
 
 ---------------------------------------------------------
@@ -234,6 +230,12 @@ local ANCHORS = {
     { value = "BOTTOMRIGHT", label = "Bottom right" },
 }
 
+local function LookItems()
+    local items = {}
+    for _, key in ipairs(CC.LOOKS) do items[#items + 1] = { value = key, label = CC.LOOK_LABELS[key] } end
+    return items
+end
+
 -- The spell icon and size of the first selected mana-spell button, for the preview.
 local function PreviewSource()
     for name in pairs(CC.char.buttons) do
@@ -247,138 +249,175 @@ local function PreviewSource()
     return "Interface\\Icons\\Spell_Frost_FrostBolt02", 45
 end
 
--- A mock action button showing a count in the current text style.
-local function PreviewButton(parent, scale)
-    local b = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    b:SetScale(scale)
+-- A clickable mock action button showing a count in one look.
+local function PreviewButton(parent, onClick)
+    local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
     UI.Backdrop(b, 0, 0, 0, 1, 0, 0, 0, 1)
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetPoint("TOPLEFT", 1, -1)
     b.icon:SetPoint("BOTTOMRIGHT", -1, 1)
     b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
-    local h = CreateFrame("Frame", nil, b)
-    h:SetAllPoints(b)
-    h:SetFrameLevel(b:GetFrameLevel() + 2)
-    h.text = h:CreateFontString(nil, "OVERLAY")
-    b.holder = h
+    b.holder = CreateFrame("Frame", nil, b)
+    b.holder:SetAllPoints(b)
+    b.holder:SetFrameLevel(b:GetFrameLevel() + 2)
+    b.fs = b.holder:CreateFontString(nil, "OVERLAY")
+    b:SetHighlightTexture(UI.WHITE)
+    local hl = b:GetHighlightTexture()
+    hl:SetVertexColor(1, 1, 1)
+    hl:SetAlpha(0.12)
+    b:SetScript("OnClick", onClick)
     return b
 end
 
 function builders.text(p)
-    local function T() return CC.db.text end
+    local editing = "normal"
+    local function L() return CC.db.looks[editing] end
     local UpdatePreview
     -- Restyle the real buttons and the preview together.
     local function StyleChanged()
         CC.ApplyStyle()
         if UpdatePreview then UpdatePreview() end
     end
+    local function Select(key)
+        editing = key
+        UI.RefreshAll()
+    end
 
-    Heading(p, "Font", 0, 0)
+    local styleLabel = UI.Text(p, "Style for:", "GameFontNormal")
+    styleLabel:SetPoint("TOPLEFT", 0, -4)
+    local which = UI.Dropdown(p, 160, LookItems, function() return editing end, Select)
+    which:SetPoint("TOPLEFT", 74, 0)
+    local copy = UI.Button(p, "Copy from Normal", 140, 22, function()
+        local color = L().color
+        CC.db.looks[editing] = CC.CopyDeep(CC.db.looks.normal)
+        CC.db.looks[editing].color = color
+        StyleChanged()
+        UI.RefreshAll()
+    end)
+    copy:SetPoint("LEFT", which, "RIGHT", 10, 0)
+
+    -- When each look applies.
+    local lowRow = CreateFrame("Frame", nil, p)
+    lowRow:SetSize(400, 22)
+    lowRow:SetPoint("TOPLEFT", 0, -30)
+    local lowText = UI.Text(lowRow, "Use this look from 1 up to")
+    lowText:SetPoint("LEFT", 0, 0)
+    local lowAt = UI.Edit(lowRow, 36, true, function() return CC.db.lowAt end,
+        function(v) CC.db.lowAt = v; StyleChanged() end)
+    lowAt:SetPoint("LEFT", lowText, "RIGHT", 10, 0)
+    local lowText2 = UI.Text(lowRow, "casts left (0 turns it off)")
+    lowText2:SetPoint("LEFT", lowAt, "RIGHT", 6, 0)
+    local when = Note(p, "", 0, -34, 440)
+    Refresher(function()
+        lowRow:SetShown(editing == "low")
+        when:SetShown(editing ~= "low")
+        copy:SetShown(editing ~= "normal")
+        if editing == "normal" then
+            when:SetText("Used when you have more casts left than the Low count look covers.")
+        else
+            when:SetText("Used when you can't afford a single cast.")
+        end
+    end)
+
+    local y0 = -64
+    Heading(p, "Font", 0, y0)
     local font = UI.Dropdown(p, 220, function()
         local items = {}
         for _, f in ipairs(CC.Fonts()) do items[#items + 1] = { value = f.name, label = f.name, font = f.path } end
         return items
-    end, function() return T().font end, function(v) T().font = v; StyleChanged() end)
-    font:SetPoint("TOPLEFT", 0, -20)
+    end, function() return L().font end, function(v) L().font = v; StyleChanged() end)
+    font:SetPoint("TOPLEFT", 0, y0 - 20)
 
-    local outline = UI.Dropdown(p, 140, function()
+    local outline = UI.Dropdown(p, 120, function()
         return {
             { value = "NONE",         label = "No outline" },
             { value = "OUTLINE",      label = "Outline" },
             { value = "THICKOUTLINE", label = "Thick outline" },
         }
-    end, function() return T().outline end, function(v) T().outline = v; StyleChanged() end)
-    outline:SetPoint("TOPLEFT", 236, -20)
+    end, function() return L().outline end, function(v) L().outline = v; StyleChanged() end)
+    outline:SetPoint("TOPLEFT", 230, y0 - 20)
 
-    local shadow = UI.Check(p, "Shadow", function() return T().shadow end,
-        function(v) T().shadow = v; StyleChanged() end)
-    shadow:SetPoint("TOPLEFT", 392, -19)
+    local shadow = UI.Check(p, "Shadow", function() return L().shadow end,
+        function(v) L().shadow = v; StyleChanged() end)
+    shadow:SetPoint("TOPLEFT", 358, y0 - 19)
 
-    local size = UI.Slider(p, "Size", 8, 40, 1, 220, function() return T().size end,
-        function(v) T().size = v; StyleChanged() end)
-    size:SetPoint("TOPLEFT", 0, -56)
+    local size = UI.Slider(p, "Size", 8, 40, 1, 220, function() return L().size end,
+        function(v) L().size = v; StyleChanged() end)
+    size:SetPoint("TOPLEFT", 0, y0 - 56)
 
-    Heading(p, "Colour", 0, -110)
-    local swatch = UI.Swatch(p, function() return T().color end, StyleChanged)
-    swatch:SetPoint("TOPLEFT", 0, -130)
-    Note(p, "Normal count colour. Low-count rules on the Rules tab can override it.", 30, -136, 500)
+    Heading(p, "Colour", 0, y0 - 104)
+    local swatch = UI.Swatch(p, function() return L().color end, StyleChanged)
+    swatch:SetPoint("TOPLEFT", 0, y0 - 124)
+    Note(p, "Conditions can override it.", 30, y0 - 130, 300)
 
-    Heading(p, "Position on the button", 0, -172)
+    Heading(p, "Position on the button", 0, y0 - 164)
     local anchor = UI.Dropdown(p, 160, function() return ANCHORS end,
-        function() return T().anchor end, function(v) T().anchor = v; StyleChanged() end)
-    anchor:SetPoint("TOPLEFT", 0, -192)
+        function() return L().anchor end, function(v) L().anchor = v; StyleChanged() end)
+    anchor:SetPoint("TOPLEFT", 0, y0 - 184)
 
-    local x = UI.Slider(p, "Nudge left / right", -30, 30, 1, 220, function() return T().x end,
-        function(v) T().x = v; StyleChanged() end)
-    x:SetPoint("TOPLEFT", 0, -226)
-    local y = UI.Slider(p, "Nudge down / up", -30, 30, 1, 220, function() return T().y end,
-        function(v) T().y = v; StyleChanged() end)
-    y:SetPoint("TOPLEFT", 236, -226)
+    local x = UI.Slider(p, "Nudge left / right", -30, 30, 1, 210, function() return L().x end,
+        function(v) L().x = v; StyleChanged() end)
+    x:SetPoint("TOPLEFT", 0, y0 - 218)
+    local y = UI.Slider(p, "Nudge down / up", -30, 30, 1, 210, function() return L().y end,
+        function(v) L().y = v; StyleChanged() end)
+    y:SetPoint("TOPLEFT", 230, y0 - 218)
 
-    local reset = UI.Button(p, "Reset text settings", 160, 22, function()
-        CC.ResetSection("text")
+    local reset = UI.Button(p, "Reset all looks", 140, 22, function()
+        CC.ResetSection("looks")
         StyleChanged()
         UI.RefreshAll()
     end)
-    reset:SetPoint("TOPLEFT", 0, -290)
+    reset:SetPoint("TOPLEFT", 0, y0 - 282)
 
-    Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -370)
+    Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -380)
 
-    -- Preview, on the right: one big button with a normal count, and smaller
-    -- real-size ones showing a low-count rule colour and an empty count.
+    -- Preview, on the right: Normal big, Low count and Out of mana smaller.
+    -- Clicking one picks that look to edit.
     local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
-    box:SetSize(170, 300)
+    box:SetSize(176, 320)
     box:SetPoint("TOPRIGHT", 0, 0)
     UI.Backdrop(box, 0.03, 0.03, 0.035, 0.9)
-    local title = UI.Text(box, "Preview", "GameFontNormal")
+    local title = UI.Text(box, "Preview  (click to edit)", "GameFontNormal")
     title:SetPoint("TOP", 0, -8)
     title:SetJustifyH("CENTER")
 
-    local big = PreviewButton(box, 2)
-    local small = { PreviewButton(box, 1), PreviewButton(box, 1) }
-    local labels = {}
-    for i = 1, 2 do
-        labels[i] = UI.Text(box, "", "GameFontHighlightSmall")
-        labels[i]:SetPoint("TOP", small[i], "BOTTOM", 0, -4)
-        labels[i]:SetJustifyH("CENTER")
+    local previews = {}
+    for _, key in ipairs(CC.LOOKS) do
+        local b = PreviewButton(box, function() Select(key) end)
+        b.label = UI.Text(box, "", "GameFontHighlightSmall")
+        b.label:SetPoint("TOP", b, "BOTTOM", 0, -4)
+        b.label:SetJustifyH("CENTER")
+        previews[key] = b
     end
 
     UpdatePreview = function()
         if not box:IsVisible() then return end
         local icon, size = PreviewSource()
-        local path = CC.FontPath(T().font)
-        -- Real size inside a box the scaled button must fit (2x, at most 140 wide).
-        local bigScale = math.min(2, 140 / size)
-        big:SetScale(bigScale)
-        big:SetSize(size, size)
-        big:ClearAllPoints()
-        big:SetPoint("TOP", box, "TOP", 0, -32 / bigScale)
-
-        -- The highest rule shows its colour on the left small button; 0 casts on the right.
-        local rules, ruleAt = CC.db.rules, nil
-        if rules.enabled then
-            for _, rule in ipairs(rules.list) do
-                if not ruleAt or rule.at > ruleAt then ruleAt = rule.at end
-            end
-        end
-        local counts = { { 12, "12 casts" }, { ruleAt or 3, ruleAt and "Low count" or "3 casts" }, { 0, "Out of mana" } }
-
-        local function Fill(b, n)
-            b.icon:SetTexture(icon)
-            CC.StyleHolder(b.holder, path)
-            local c = CC.CountColor(n)
-            b.holder.text:SetText(n)
-            b.holder.text:SetTextColor(c.r, c.g, c.b, c.a or 1)
-        end
-        Fill(big, counts[1][1])
-        local smallScale = math.min(1, 60 / size)
-        for i, b in ipairs(small) do
-            b:SetScale(smallScale)
+        local counts = { normal = math.max(12, CC.db.lowAt + 5), low = math.max(1, CC.db.lowAt), oom = 0 }
+        local layout = {
+            normal = { scale = math.min(2, 120 / size), x = 88, y = 30 },
+            low    = { scale = math.min(1, 60 / size), x = 46 },
+            oom    = { scale = math.min(1, 60 / size), x = 130 },
+        }
+        local bigH = size * layout.normal.scale
+        for _, key in ipairs(CC.LOOKS) do
+            local b, lay, look = previews[key], layout[key], CC.db.looks[key]
+            b:SetScale(lay.scale)
             b:SetSize(size, size)
             b:ClearAllPoints()
-            b:SetPoint("TOP", box, "TOPLEFT", (i == 1 and 45 or 125) / smallScale, -(32 + size * bigScale + 24) / smallScale)
-            Fill(b, counts[i + 1][1])
-            labels[i]:SetText(counts[i + 1][2])
+            b:SetPoint("TOP", box, "TOPLEFT", lay.x / lay.scale, -(lay.y or (30 + bigH + 34)) / lay.scale)
+            b.icon:SetTexture(icon)
+            CC.StyleFont(b.fs, look, b.holder)
+            b.fs:SetText(counts[key])
+            b.fs:SetTextColor(look.color.r, look.color.g, look.color.b, look.color.a or 1)
+            if key == editing then
+                b:SetBackdropBorderColor(1, 0.82, 0, 1)
+            else
+                b:SetBackdropBorderColor(0, 0, 0, 1)
+            end
+            b.label:SetText(CC.LOOK_LABELS[key])
+            if key == "low" and CC.db.lowAt < 1 then b.label:SetText("Low count (off)") end
+            b.label:SetTextColor(key == editing and 1 or 0.8, key == editing and 0.82 or 0.8, key == editing and 0 or 0.8)
         end
     end
     box:SetScript("OnShow", UpdatePreview)
@@ -417,29 +456,80 @@ function builders.visibility(p)
 end
 
 ---------------------------------------------------------
---  SECTION: Rules tab
+--  SECTION: Conditions tab
 ---------------------------------------------------------
-local MAX_RULES = 5
-local NO_COLOR = Color(1, 1, 1)
+-- A scrolling list of "If <subject> <op> <value> then <action>" rows, as many as you like.
+local SUBJECTS = {
+    { value = "casts",  label = "Casts left" },
+    { value = "mana",   label = "Mana %" },
+    { value = "combat", label = "In combat" },
+    { value = "free",   label = "Spell costs no mana" },
+}
+local NUMBER_OPS = {
+    { value = "lt", label = "is below" },
+    { value = "le", label = "is at most" },
+    { value = "eq", label = "is" },
+    { value = "ne", label = "is not" },
+    { value = "ge", label = "is at least" },
+    { value = "gt", label = "is above" },
+}
+local BOOL_OPS = {
+    { value = "is",    label = "is true" },
+    { value = "isnot", label = "is false" },
+}
+local ACTIONS = {
+    { value = "color", label = "Change count colour" },
+    { value = "hide",  label = "Hide the count" },
+    { value = "glow",  label = "Glow the button" },
+    { value = "pulse", label = "Pulse the count" },
+    { value = "sound", label = "Play a sound" },
+}
+local ROW_H = 62
 
-function builders.rules(p)
+local function IsBool(subject) return subject == "combat" or subject == "free" end
+
+local function NewCondition()
+    return {
+        enabled = true, subject = "casts", op = "le", value = 1,
+        action = "glow", color = Color(1, 0.82, 0), sound = "raidwarning",
+    }
+end
+
+-- Keeps a condition consistent after its subject changes.
+local function FixCondition(c)
+    if IsBool(c.subject) then
+        if c.op ~= "is" and c.op ~= "isnot" then c.op = "is" end
+    elseif c.op == "is" or c.op == "isnot" then
+        c.op = "le"
+    end
+    if c.action == "sound" and not CC.CondIsLuaKnown(c) then c.action = "color" end
+end
+
+local function DropFocus()
+    local f = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+    if f then f:ClearFocus() end
+end
+
+function builders.conditions(p)
+    local sf, content = UI.ScrollArea(p)
+    local function Conds() return CC.db.conditions end
+
+    -- Free spells
     local function F() return CC.db.free end
-    local function R() return CC.db.rules end
-
-    Heading(p, "Free spells", 0, 0)
-    local label = UI.Text(p, "When a spell costs no mana:")
-    label:SetPoint("TOPLEFT", 0, -26)
-    local mode = UI.Dropdown(p, 150, function()
+    Heading(content, "Free spells", 0, 0)
+    local freeLabel = UI.Text(content, "When a spell costs no mana:")
+    freeLabel:SetPoint("TOPLEFT", 0, -26)
+    local mode = UI.Dropdown(content, 150, function()
         return {
             { value = "hide", label = "Show nothing" },
             { value = "text", label = "Show text" },
         }
     end, function() return F().mode end, function(v) F().mode = v; Changed() end)
     mode:SetPoint("TOPLEFT", 190, -21)
-    local freeText = UI.Edit(p, 80, false, function() return F().text end,
+    local freeText = UI.Edit(content, 80, false, function() return F().text end,
         function(v) F().text = v; Changed() end)
     freeText:SetPoint("TOPLEFT", 356, -22)
-    local freeColor = UI.Swatch(p, function() return F().color end, Changed)
+    local freeColor = UI.Swatch(content, function() return F().color end, Changed)
     freeColor:SetPoint("TOPLEFT", 446, -20)
     Refresher(function()
         local on = F().mode == "text"
@@ -447,73 +537,108 @@ function builders.rules(p)
         freeColor:SetActive(on)
     end)
 
-    Heading(p, "Low count colours", 0, -66)
-    local enabled = UI.Check(p, "Change the colour when casts run low",
-        function() return R().enabled end, function(v) R().enabled = v; Changed() end)
-    enabled:SetPoint("TOPLEFT", 0, -86)
+    Heading(content, "Conditions", 0, -64)
+    Note(content, "Checked top to bottom; when two change the colour, the lower one wins. "
+        .. "Sounds can only follow In combat and Spell costs no mana: Forever hides your current mana from addons.", 0, -84, 600)
 
     local rows = {}
-    for i = 1, MAX_RULES do
-        local row = CreateFrame("Frame", nil, p)
-        row:SetSize(400, 26)
-        row:SetPoint("TOPLEFT", 26, -116 - (i - 1) * 30)
-        local at = UI.Text(row, "At")
-        at:SetPoint("LEFT", 0, 0)
-        local num = UI.Edit(row, 36, true, function()
-            local rule = R().list[i]
-            return rule and rule.at or 0
-        end, function(v)
-            local rule = R().list[i]
-            if rule then rule.at = v; Changed() end
-        end)
-        num:SetPoint("LEFT", at, "RIGHT", 10, 0)
-        local fewer = UI.Text(row, "casts or fewer")
-        fewer:SetPoint("LEFT", num, "RIGHT", 6, 0)
-        local sw = UI.Swatch(row, function()
-            local rule = R().list[i]
-            return rule and rule.color or NO_COLOR
-        end, Changed)
-        sw:SetPoint("LEFT", fewer, "RIGHT", 10, 0)
+    local add
+
+    local function Layout()
+        local list = Conds()
+        for i, row in ipairs(rows) do
+            row.cond = list[i]
+            row:SetShown(row.cond ~= nil)
+        end
+        add:ClearAllPoints()
+        add:SetPoint("TOPLEFT", 0, -124 - #list * ROW_H)
+        sf:SetContentHeight(124 + #list * ROW_H + 40)
+    end
+
+    local function NewRow(i)
+        local row = CreateFrame("Frame", nil, content, "BackdropTemplate")
+        row:SetSize(620, ROW_H - 6)
+        row:SetPoint("TOPLEFT", 0, -118 - (i - 1) * ROW_H)
+        UI.Backdrop(row, 0.08, 0.08, 0.09, 0.9)
+        local function C() return row.cond or NewCondition() end
+        local function Set(field, v)
+            if not row.cond then return end
+            row.cond[field] = v
+            FixCondition(row.cond)
+            Changed()
+        end
+
+        local en = UI.Check(row, "If", function() return C().enabled end, function(v) Set("enabled", v) end)
+        en:SetPoint("TOPLEFT", 4, -4)
+        local subject = UI.Dropdown(row, 150, function() return SUBJECTS end,
+            function() return C().subject end, function(v) Set("subject", v) end)
+        subject:SetPoint("TOPLEFT", 50, -5)
+        local op = UI.Dropdown(row, 110, function() return IsBool(C().subject) and BOOL_OPS or NUMBER_OPS end,
+            function() return C().op end, function(v) Set("op", v) end)
+        op:SetPoint("LEFT", subject, "RIGHT", 6, 0)
+        local value = UI.Edit(row, 40, true, function() return C().value or 0 end,
+            function(v) Set("value", v) end)
+        value:SetPoint("LEFT", op, "RIGHT", 10, 0)
+        local unit = UI.Text(row, "")
+        unit:SetPoint("LEFT", value, "RIGHT", 4, 0)
+
+        local thenText = UI.Text(row, "then")
+        thenText:SetPoint("TOPLEFT", 30, -36)
+        local action = UI.Dropdown(row, 170, function()
+            local items = {}
+            for _, a in ipairs(ACTIONS) do
+                if a.value ~= "sound" or CC.CondIsLuaKnown(C()) then items[#items + 1] = a end
+            end
+            return items
+        end, function() return C().action end, function(v) Set("action", v) end)
+        action:SetPoint("TOPLEFT", 66, -31)
+        local swatch = UI.Swatch(row, function() return C().color end, Changed)
+        swatch:SetPoint("LEFT", action, "RIGHT", 8, 0)
+        local sound = UI.Dropdown(row, 150, CC.SoundItems,
+            function() return C().sound end, function(v) Set("sound", v); CC.PlaySound(v) end)
+        sound:SetPoint("LEFT", action, "RIGHT", 8, 0)
+        local test = UI.Button(row, "Test", 50, 20, function() CC.PlaySound(C().sound) end)
+        test:SetPoint("LEFT", sound, "RIGHT", 6, 0)
+
         local remove = UI.Button(row, "Remove", 70, 20, function()
-            table.remove(R().list, i)
+            DropFocus()
+            for idx, c in ipairs(Conds()) do
+                if c == row.cond then table.remove(Conds(), idx) break end
+            end
             Changed()
             UI.RefreshAll()
         end)
-        remove:SetPoint("LEFT", sw, "RIGHT", 10, 0)
+        remove:SetPoint("TOPRIGHT", -6, -6)
+
+        Refresher(function()
+            if not row.cond then return end
+            local c = row.cond
+            local numeric = not IsBool(c.subject)
+            value:SetShown(numeric)
+            unit:SetText(c.subject == "mana" and "%" or (c.subject == "casts" and "casts" or ""))
+            unit:SetShown(numeric)
+            swatch:SetShown(c.action == "color" or c.action == "glow")
+            sound:SetShown(c.action == "sound")
+            test:SetShown(c.action == "sound")
+            row:SetAlpha(c.enabled and 1 or 0.6)
+        end)
         rows[i] = row
+        return row
     end
 
-    local add = UI.Button(p, "Add a rule", 110, 22, function()
-        local list = R().list
-        if #list >= MAX_RULES then return end
-        local top = 0
-        for _, rule in ipairs(list) do top = math.max(top, rule.at) end
-        list[#list + 1] = { at = top + 3, color = Color(1, 1, 0) }
+    add = UI.Button(content, "Add a condition", 140, 22, function()
+        DropFocus()
+        local list = Conds()
+        list[#list + 1] = NewCondition()
+        if not rows[#list] then NewRow(#list) end
         Changed()
         UI.RefreshAll()
+        sf:ScrollToBottom()
     end)
-    add:SetPoint("TOPLEFT", 26, -116 - MAX_RULES * 30 - 4)
 
     Refresher(function()
-        local n = #R().list
-        for i, row in ipairs(rows) do row:SetShown(i <= n) end
-        add:SetEnabled(n < MAX_RULES)
-    end)
-
-    local reset = UI.Button(p, "Reset rules", 120, 22, function()
-        CC.ResetSection("free")
-        CC.ResetSection("rules")
-        Changed()
-        UI.RefreshAll()
-    end)
-    reset:SetPoint("TOPLEFT", 0, -310)
-
-    Note(p, "The lowest rule a count falls under wins. Counts above every rule use the normal colour from the Text tab.", 0, -370)
-
-    -- Show the rules lowest first whenever the tab opens.
-    p:SetScript("OnShow", function()
-        table.sort(R().list, function(a, b) return a.at < b.at end)
-        UI.RefreshAll()
+        for i = #rows + 1, #Conds() do NewRow(i) end
+        Layout()
     end)
 end
 
