@@ -2,7 +2,7 @@
 --  CastCount - Config window
 --  Author: Dranged
 ---------------------------------------------------------
--- /castcount opens it. Tabs: Buttons (the picker), Blacklist, Text, Visibility, Conditions.
+-- /castcount opens it. Tabs: Buttons (the picker), Blacklist, Appearance, Visibility, Conditions.
 
 local ADDON, CC = ...
 local UI = CC.UI
@@ -16,7 +16,7 @@ local current = "buttons"
 local TABS = {
     { key = "buttons",    label = "Buttons" },
     { key = "blacklist",  label = "Blacklist" },
-    { key = "text",       label = "Text" },
+    { key = "text",       label = "Appearance" },
     { key = "visibility", label = "Visibility" },
     { key = "conditions", label = "Conditions" },
 }
@@ -233,6 +233,7 @@ local ANCHORS = {
 local function LookItems()
     local items = {}
     for _, key in ipairs(CC.LOOKS) do items[#items + 1] = { value = key, label = CC.LOOK_LABELS[key] } end
+    items[#items + 1] = { value = "fill", label = "ManaFill" }
     return items
 end
 
@@ -249,7 +250,7 @@ local function PreviewSource()
     return "Interface\\Icons\\Spell_Frost_FrostBolt02", 45
 end
 
-local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Free" }
+local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Free", fill = "ManaFill" }
 
 -- A clickable mock action button showing a count in one look.
 local function PreviewButton(parent, onClick)
@@ -259,6 +260,13 @@ local function PreviewButton(parent, onClick)
     b.icon:SetPoint("TOPLEFT", 1, -1)
     b.icon:SetPoint("BOTTOMRIGHT", -1, 1)
     b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    b.fill = CreateFrame("StatusBar", nil, b)
+    b.fill:SetPoint("TOPLEFT", 2, -2)
+    b.fill:SetPoint("BOTTOMRIGHT", -2, 2)
+    b.fill:SetOrientation("VERTICAL")
+    b.fill:SetFrameLevel(b:GetFrameLevel() + 1)
+    b.fill:SetMinMaxValues(0, 1)
+    b.fill:SetValue(0.6)
     b.holder = CreateFrame("Frame", nil, b)
     b.holder:SetAllPoints(b)
     b.holder:SetFrameLevel(b:GetFrameLevel() + 2)
@@ -273,7 +281,7 @@ end
 
 function builders.text(p)
     local editing = "normal"
-    local function L() return CC.db.looks[editing] end
+    local function L() return CC.db.looks[editing] or CC.db.looks.normal end
     local UpdatePreview
     -- Restyle the real buttons and the preview together.
     local function StyleChanged()
@@ -285,10 +293,10 @@ function builders.text(p)
         UI.RefreshAll()
     end
 
-    local styleLabel = UI.Text(p, "Style for:", "GameFontNormal")
+    local styleLabel = UI.Text(p, "Edit:", "GameFontNormal")
     styleLabel:SetPoint("TOPLEFT", 0, -4)
     local which = UI.Dropdown(p, 160, LookItems, function() return editing end, Select)
-    which:SetPoint("TOPLEFT", 74, 0)
+    which:SetPoint("TOPLEFT", 44, 0)
     local copy = UI.Button(p, "Copy from Normal", 140, 22, function()
         local color = L().color
         CC.db.looks[editing] = CC.CopyDeep(CC.db.looks.normal)
@@ -323,25 +331,29 @@ function builders.text(p)
     Refresher(function()
         lowRow:SetShown(editing == "low")
         freeRow:SetShown(editing == "free")
-        when:SetShown(editing == "normal" or editing == "oom")
-        copy:SetShown(editing ~= "normal")
+        when:SetShown(editing == "normal" or editing == "oom" or editing == "fill")
+        copy:SetShown(editing ~= "normal" and editing ~= "fill")
         if editing == "normal" then
             when:SetText("Used when you have more casts left than the Low count look covers.")
+        elseif editing == "fill" then
+            when:SetText("While you can't afford a spell, its button fills from the bottom as your mana comes back.")
         else
             when:SetText("Used when you can't afford a single cast.")
         end
     end)
 
     local y0 = -64
-    Heading(p, "Font", 0, y0)
-    local font = UI.Dropdown(p, 220, function()
+    local lp = CreateFrame("Frame", nil, p)
+    lp:SetAllPoints(p)
+    Heading(lp, "Font", 0, y0)
+    local font = UI.Dropdown(lp, 220, function()
         local items = {}
         for _, f in ipairs(CC.Fonts()) do items[#items + 1] = { value = f.name, label = f.name, font = f.path } end
         return items
     end, function() return L().font end, function(v) L().font = v; StyleChanged() end)
     font:SetPoint("TOPLEFT", 0, y0 - 20)
 
-    local outline = UI.Dropdown(p, 120, function()
+    local outline = UI.Dropdown(lp, 120, function()
         return {
             { value = "NONE",         label = "No outline" },
             { value = "OUTLINE",      label = "Outline" },
@@ -350,46 +362,77 @@ function builders.text(p)
     end, function() return L().outline end, function(v) L().outline = v; StyleChanged() end)
     outline:SetPoint("TOPLEFT", 230, y0 - 20)
 
-    local shadow = UI.Check(p, "Shadow", function() return L().shadow end,
+    local shadow = UI.Check(lp, "Shadow", function() return L().shadow end,
         function(v) L().shadow = v; StyleChanged() end)
     shadow:SetPoint("TOPLEFT", 358, y0 - 19)
 
-    local size = UI.Slider(p, "Size", 8, 40, 1, 220, function() return L().size end,
+    local size = UI.Slider(lp, "Size", 8, 40, 1, 220, function() return L().size end,
         function(v) L().size = v; StyleChanged() end)
     size:SetPoint("TOPLEFT", 0, y0 - 56)
 
-    Heading(p, "Colour", 0, y0 - 104)
-    local swatch = UI.Swatch(p, function() return L().color end, StyleChanged)
+    Heading(lp, "Colour", 0, y0 - 104)
+    local swatch = UI.Swatch(lp, function() return L().color end, StyleChanged)
     swatch:SetPoint("TOPLEFT", 0, y0 - 124)
-    Note(p, "Conditions can override it.", 30, y0 - 130, 300)
+    Note(lp, "Conditions can override it.", 30, y0 - 130, 300)
 
-    Heading(p, "Position on the button", 0, y0 - 164)
-    local anchor = UI.Dropdown(p, 160, function() return ANCHORS end,
+    Heading(lp, "Position on the button", 0, y0 - 164)
+    local anchor = UI.Dropdown(lp, 160, function() return ANCHORS end,
         function() return L().anchor end, function(v) L().anchor = v; StyleChanged() end)
     anchor:SetPoint("TOPLEFT", 0, y0 - 184)
 
     -- 0, 0 is the chosen position itself; the arrows nudge 1 (Shift 5, Ctrl 10).
-    local x = UI.Slider(p, "X offset (left - / right +)", -50, 50, 1, 216, function() return L().x end,
+    local x = UI.Slider(lp, "X offset (left - / right +)", -50, 50, 1, 216, function() return L().x end,
         function(v) L().x = v; StyleChanged() end, true)
     x:SetPoint("TOPLEFT", 0, y0 - 218)
-    local y = UI.Slider(p, "Y offset (down - / up +)", -50, 50, 1, 216, function() return L().y end,
+    local y = UI.Slider(lp, "Y offset (down - / up +)", -50, 50, 1, 216, function() return L().y end,
         function(v) L().y = v; StyleChanged() end, true)
     y:SetPoint("TOPLEFT", 230, y0 - 218)
-    Note(p, "Arrows nudge by 1, Shift-click by 5, Ctrl-click by 10.", 0, y0 - 256, 440)
+    Note(lp, "Arrows nudge by 1, Shift-click by 5, Ctrl-click by 10.", 0, y0 - 256, 440)
 
-    local reset = UI.Button(p, "Reset all looks", 140, 22, function()
+    local reset = UI.Button(lp, "Reset all looks", 140, 22, function()
         CC.ResetSection("looks")
         StyleChanged()
         UI.RefreshAll()
     end)
     reset:SetPoint("TOPLEFT", 0, y0 - 282)
 
+
+    -- ManaFill settings, shown instead of the look settings when ManaFill is picked.
+    local function FS() return CC.db.fill end
+    local fp = CreateFrame("Frame", nil, p)
+    fp:SetAllPoints(p)
+    local fillOn = UI.Check(fp, "Show ManaFill", function() return FS().enabled end,
+        function(v) FS().enabled = v; StyleChanged() end)
+    fillOn:SetPoint("TOPLEFT", 0, y0)
+    Note(fp, "Full means you have enough mana for one cast; the fill disappears as soon as you can cast it.", 0, y0 - 28, 440)
+    Heading(fp, "Colour", 0, y0 - 56)
+    local fillColor = UI.Swatch(fp, function() return FS().color end, StyleChanged)
+    fillColor:SetPoint("TOPLEFT", 0, y0 - 76)
+    Note(fp, "The colour picker's opacity sets how see-through the fill is.", 30, y0 - 82, 400)
+    Heading(fp, "Texture", 0, y0 - 116)
+    local fillTex = UI.Dropdown(fp, 220, function()
+        local items = {}
+        for _, t in ipairs(CC.BarTextures()) do items[#items + 1] = { value = t.name, label = t.name } end
+        return items
+    end, function() return FS().texture end, function(v) FS().texture = v; StyleChanged() end)
+    fillTex:SetPoint("TOPLEFT", 0, y0 - 136)
+    local fillReset = UI.Button(fp, "Reset ManaFill", 140, 22, function()
+        CC.ResetSection("fill")
+        StyleChanged()
+        UI.RefreshAll()
+    end)
+    fillReset:SetPoint("TOPLEFT", 0, y0 - 180)
+    Refresher(function()
+        lp:SetShown(editing ~= "fill")
+        fp:SetShown(editing == "fill")
+    end)
+
     Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -380)
 
     -- Preview, on the right: Normal big, Low count, Out of mana and Free smaller.
     -- Clicking one picks that look to edit.
     local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
-    box:SetSize(176, 320)
+    box:SetSize(176, 340)
     box:SetPoint("TOPRIGHT", 0, 0)
     UI.Backdrop(box, 0.03, 0.03, 0.035, 0.9)
     local title = UI.Text(box, "Preview  (click to edit)", "GameFontNormal")
@@ -397,7 +440,8 @@ function builders.text(p)
     title:SetJustifyH("CENTER")
 
     local previews = {}
-    for _, key in ipairs(CC.LOOKS) do
+    local previewKeys = { "normal", "low", "oom", "free", "fill" }
+    for _, key in ipairs(previewKeys) do
         local b = PreviewButton(box, function() Select(key) end)
         b.label = UI.Text(box, "", "GameFontHighlightSmall")
         b.label:SetPoint("TOP", b, "BOTTOM", 0, -4)
@@ -418,18 +462,24 @@ function builders.text(p)
             low    = { scale = small, x = 32 },
             oom    = { scale = small, x = 88 },
             free   = { scale = small, x = 144 },
+            fill   = { scale = small, x = 88 },
         }
         local bigH = size * layout.normal.scale
-        for _, key in ipairs(CC.LOOKS) do
-            local b, lay, look = previews[key], layout[key], CC.db.looks[key]
+        local row2 = 30 + bigH + 34
+        layout.fill.y = row2 + size * small + 30
+        for _, key in ipairs(previewKeys) do
+            local b, lay = previews[key], layout[key]
+            local look = CC.db.looks[key] or CC.db.looks.oom
             b:SetScale(lay.scale)
             b:SetSize(size, size)
             b:ClearAllPoints()
-            b:SetPoint("TOP", box, "TOPLEFT", lay.x / lay.scale, -(lay.y or (30 + bigH + 34)) / lay.scale)
+            b:SetPoint("TOP", box, "TOPLEFT", lay.x / lay.scale, -(lay.y or row2) / lay.scale)
             b.icon:SetTexture(icon)
             CC.StyleFont(b.fs, look, b.holder)
-            b.fs:SetText(counts[key])
+            b.fs:SetText(key == "fill" and "" or counts[key])
             b.fs:SetTextColor(look.color.r, look.color.g, look.color.b, look.color.a or 1)
+            CC.StyleFill(b.fill)
+            b.fill:SetShown(CC.db.fill.enabled and (key == "oom" or key == "fill"))
             if key == editing then
                 b:SetBackdropBorderColor(1, 0.82, 0, 1)
             else

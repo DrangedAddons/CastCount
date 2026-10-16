@@ -6,7 +6,7 @@ A World of Warcraft addon for WoW Forever that shows how many times you can cast
 - `/cc` (or `/castcount`, `/ccount`, the addon list button, or Options > AddOns > CastCount) opens the settings.
 - **Buttons:** while this tab is open your action buttons are covered, like key binding mode. Click a button to add or remove it; hold Shift for the whole bar. White-blue highlight = the click adds, red = it removes.
 - **Blacklist:** spells that should never show a count.
-- **Text:** the Normal, Low count, Out of mana and Free right now looks; click a preview to edit it.
+- **Appearance:** the Normal, Low count, Out of mana and Free right now looks, and ManaFill (the button fills up as mana returns when you can't afford a spell); click a preview to edit it.
 - **Visibility:** when counts show.
 - **Conditions:** If <casts left / mana % / ...> then glow, pulse, recolour, resize, move, tint, hide, play a sound...
 

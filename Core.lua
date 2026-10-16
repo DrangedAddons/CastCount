@@ -44,6 +44,9 @@ CC.DEFAULTS = {
     --   checks = { { subject = casts|mana|free|combat|hover, op = < <= = != >= > | true false, value } },
     --   props = { { type = textcolor|alpha|hide|size|offset|text|pulse|glow|tint|sound|chat, ... } } }
     conditions = {},
+    -- ManaFill: while a spell can't be afforded, the button fills from the bottom
+    -- up as mana comes back (0 to the spell's cost).
+    fill = { enabled = true, color = Color(0.25, 0.55, 1, 0.45), texture = "Solid" },
 }
 
 -- Per character: which buttons show counts (by button name) and which
@@ -149,6 +152,25 @@ function CC.Fonts()
     end
     table.sort(list, function(a, b) return a.name:lower() < b.name:lower() end)
     return list
+end
+
+-- Bar textures: plain colour plus any LibSharedMedia status bar textures.
+function CC.BarTextures()
+    local list = { { name = "Solid", path = "Interface\\Buttons\\WHITE8X8" } }
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if LSM then
+        for _, name in ipairs(LSM:List("statusbar") or {}) do
+            list[#list + 1] = { name = name, path = LSM:Fetch("statusbar", name) }
+        end
+    end
+    return list
+end
+
+function CC.BarTexturePath(name)
+    for _, t in ipairs(CC.BarTextures()) do
+        if t.name == name then return t.path end
+    end
+    return "Interface\\Buttons\\WHITE8X8"
 end
 
 function CC.FontPath(name)

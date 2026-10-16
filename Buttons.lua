@@ -216,6 +216,32 @@ function CC.ApplyStyle()
     CC.MarkDirty()
 end
 
+-- ManaFill bar: inside the icon, filling bottom-up from 0 to the spell's cost.
+function CC.StyleFill(bar)
+    local s = CC.db.fill
+    bar:SetStatusBarTexture(CC.BarTexturePath(s.texture))
+    local c = s.color
+    bar:SetStatusBarColor(c.r, c.g, c.b, c.a or 1)
+end
+
+local function FillBar(h)
+    local f = h.fill
+    if not f then
+        f = CreateFrame("StatusBar", nil, h)
+        f:SetPoint("TOPLEFT", 2, -2)
+        f:SetPoint("BOTTOMRIGHT", -2, 2)
+        f:SetOrientation("VERTICAL")
+        f:SetFrameLevel(h:GetFrameLevel() + 1)
+        f:SetAlpha(0)
+        h.fill = f
+    end
+    if f.styled ~= styleVersion then
+        CC.StyleFill(f)
+        f.styled = styleVersion
+    end
+    return f
+end
+
 local function HideHolder(btn)
     local h = holders[btn]
     if h then h:Hide() end
@@ -361,6 +387,20 @@ local function CountCurve(cost, max)
 end
 
 -- Alpha 1 below full mana, 0 at full (for "only when my mana isn't full").
+-- ManaFill alpha: 1 while mana is below one cast's worth, 0 from then on.
+local fillCurves = {}
+local function FillCurve(cost, max)
+    local key = cost .. ":" .. max
+    local c = fillCurves[key]
+    if c then return c end
+    c = C_CurveUtil.CreateCurve()
+    c:SetType(Enum.LuaCurveType.Step)
+    c:AddPoint(0, 1)
+    c:AddPoint(StepX(1, cost, max), 0)
+    fillCurves[key] = c
+    return c
+end
+
 local function AlphaCurve()
     if alphaCurve then return alphaCurve end
     alphaCurve = C_CurveUtil.CreateCurve()
@@ -561,6 +601,34 @@ local function Visibility(btn, mana, max)
     return HAS_CURVES and "notfull" or true
 end
 
+-- ManaFill for a spell costing cost (nil = free now: no fill). With secret mana the
+-- bar takes the secret value directly and a curve decides whether it shows.
+local function UpdateFill(h, cost, max, mana)
+    if not (CC.db.fill.enabled and cost) then
+        if h.fill then h.fill:SetAlpha(0) end
+        return
+    end
+    local f = FillBar(h)
+    f:SetMinMaxValues(0, cost)
+    if mana then
+        f:SetValue(math.min(mana, cost))
+        f:SetAlpha(mana < cost and 1 or 0)
+        return
+    end
+    local ok, err = pcall(f.SetValue, f, UnitPower("player", CC.MANA))
+    if not ok then
+        CC.curveError = tostring(err)
+        f:SetAlpha(0)
+        return
+    end
+    if cost >= max then
+        f:SetAlpha(1)
+    else
+        local a = Evaluate(FillCurve(cost, max))
+        f:SetAlpha(a == nil and 0 or a)
+    end
+end
+
 -- Spells seen costing mana this session: free from then on means "free right now".
 CC.everMana = CC.everMana or {}
 
@@ -601,6 +669,8 @@ function CC.UpdateButton(btn, mana, max, sig, condNow)
     else
         return HideHolder(btn)
     end
+
+    UpdateFill(h, cost, max, mana)
 
     if vis == "notfull" then
         local a = Evaluate(AlphaCurve())
