@@ -1,0 +1,12 @@
+## Interface: 16001
+## Title: CastCount
+## Notes: Shows how many casts you can afford on each action button.
+## Author: Dranged
+## Version: 1.0.0
+## X-DrangedAddons-Games: _classic_beta_, _forever_
+## SavedVariables: CastCountDB
+
+Core.lua
+Config.lua
+Overlay.lua
+Options.lua
