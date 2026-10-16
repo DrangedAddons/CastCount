@@ -164,7 +164,11 @@ end)
 SLASH_CASTCOUNT1 = "/castcount"
 SLASH_CASTCOUNT2 = "/ccount"
 SLASH_CASTCOUNT3 = "/cc"
-SlashCmdList.CASTCOUNT = function()
+SlashCmdList.CASTCOUNT = function(msg)
+    if (msg or ""):lower():match("^%s*debug") then
+        if CC.Debug then CC.Debug() end
+        return
+    end
     if CC.ToggleConfig then CC.ToggleConfig() end
 end
 

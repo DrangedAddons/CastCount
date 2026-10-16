@@ -227,3 +227,43 @@ CC.inCombat = InCombatLockdown() or UnitAffectingCombat("player") or false
 CC.On("PLAYER_REGEN_DISABLED", function() CC.inCombat = true; CC.MarkDirty() end)
 CC.On("PLAYER_REGEN_ENABLED", function() CC.inCombat = false; CC.MarkDirty() end)
 CC.OnReady(CC.MarkDirty)
+
+---------------------------------------------------------
+--  SECTION: Debug (/cc debug)
+---------------------------------------------------------
+-- Prints what the game hands us for mana and costs, so in-game reports show
+-- whether a value is plain, secret or missing.
+local function Show(v)
+    if v == nil then return "nil" end
+    if not Plain(v) then return "|cffff5555secret|r" end
+    return tostring(v)
+end
+
+function CC.Debug()
+    local cur, max = UnitPower("player", CC.MANA), UnitPowerMax("player", CC.MANA)
+    local ptype = UnitPowerType("player")
+    CC.Print(("mana %s / %s (secret API %s), power type %s, form %s, in combat %s, last used mana %s / %s")
+        :format(Show(cur), Show(max), issecretvalue and "yes" or "no", Show(ptype),
+            Show(GetShapeshiftForm and GetShapeshiftForm()), tostring(CC.inCombat), lastMana, lastMax))
+    local n = 0
+    for name in pairs(CC.char.buttons) do
+        local btn = _G[name]
+        if type(btn) == "table" and btn.GetObjectType then
+            local slot = ActionSlot(btn)
+            local spell = CC.ButtonSpell(btn)
+            if spell then
+                local costs = ((C_Spell and C_Spell.GetSpellPowerCost) or GetSpellPowerCost)(spell)
+                local raw = {}
+                for _, c in ipairs(type(costs) == "table" and costs or {}) do
+                    raw[#raw + 1] = ("type %s cost %s pct %s"):format(Show(c.type), Show(c.cost), Show(c.costPercent))
+                end
+                local kind, amount = CC.SpellCost(spell)
+                CC.Print(("%s slot %s: %s (%s) -> %s %s  [%s]"):format(name, Show(slot), Show(CC.SpellName(spell)),
+                    Show(spell), tostring(kind), tostring(amount), table.concat(raw, "; ")))
+                n = n + 1
+                if n >= 5 then break end
+            end
+        end
+    end
+    if n == 0 then CC.Print("No selected buttons with a spell.") end
+end
