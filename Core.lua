@@ -163,6 +163,20 @@ end)
 ---------------------------------------------------------
 SLASH_CASTCOUNT1 = "/castcount"
 SLASH_CASTCOUNT2 = "/ccount"
+SLASH_CASTCOUNT3 = "/cc"
 SlashCmdList.CASTCOUNT = function()
     if CC.ToggleConfig then CC.ToggleConfig() end
 end
+
+-- /cc normally opens the game's click casting window. Take it over: drop every
+-- other list's /cc and point the chat lookup at ours.
+local function ClaimCC()
+    for key, value in pairs(_G) do
+        if type(key) == "string" and type(value) == "string" and value:lower() == "/cc"
+            and key:find("^SLASH_") and not key:find("^SLASH_CASTCOUNT") then
+            _G[key] = nil
+        end
+    end
+    if hash_SlashCmdList then hash_SlashCmdList["/CC"] = SlashCmdList.CASTCOUNT end
+end
+CC.On("PLAYER_LOGIN", ClaimCC)
