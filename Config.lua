@@ -522,6 +522,11 @@ function builders.visibility(p)
     end)
     reset:SetPoint("TOPLEFT", 0, -220)
 
+    Heading(p, "Minimap", 0, -262)
+    local mm = UI.Check(p, "Show the minimap button", function() return not CC.db.minimap.hide end,
+        function(v) CC.SetMinimapShown(v) end)
+    mm:SetPoint("TOPLEFT", 0, -284)
+
     Note(p, "Tip: untick both combat options and keep the mouse-over option ticked to see counts only when you hover a button.", 0, -370)
 end
 

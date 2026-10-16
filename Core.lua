@@ -48,6 +48,7 @@ CC.DEFAULTS = {
     -- ManaFill: while a spell can't be afforded, the button fills from the bottom
     -- up as mana comes back (0 to the spell's cost).
     fill = { enabled = true, color = Color(0.25, 0.55, 1, 0.45), texture = "Solid" },
+    minimap = { hide = false },   -- LibDBIcon keeps the button's position here too
 }
 
 -- Per character: which buttons show counts (by button name) and which

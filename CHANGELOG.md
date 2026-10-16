@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.1.0
+- Minimap button (LibDBIcon, so minimap addons can collect it): click to open the settings, drag to move. Turn it off on the Visibility tab.
+- Addon icon for the DrangedAddons manager.
+
 ## 2.0.0
 A full redesign for WoW Forever.
 - **Choose your buttons like key binding mode.** `/cc` (or `/castcount`) opens the settings; on the Buttons tab every action button is covered. Click a button to add it and click again to remove it; hold Shift for the whole bar. The hover highlight shows what the click will do: white-blue adds, red removes.

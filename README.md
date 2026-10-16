@@ -12,6 +12,8 @@ A World of Warcraft addon for WoW Forever that shows how many times you can cast
 
 Works with Blizzard's action bars and EllesmereUI.
 
-Includes LibStub and LibCustomGlow-1.0 (MIT licence, see Libs).
+A minimap button opens the settings too.
+
+Includes LibStub, CallbackHandler, LibDataBroker, LibDBIcon and LibCustomGlow-1.0 (MIT licence, see Libs).
 
 Originally released for Season of Discovery as ManaCastCount.
