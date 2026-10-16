@@ -476,7 +476,7 @@ function UI.Edit(parent, width, numeric, get, set)
         if numeric then
             local v = tonumber(text)
             if v then set(math.floor(v + 0.5)) end
-        elseif text ~= "" then
+        elseif text ~= "" or e.allowEmpty then
             set(text)
         end
         e:Refresh()

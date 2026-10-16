@@ -551,10 +551,6 @@ local BOOL_OPS = {
     { value = "true",  label = "is true" },
     { value = "false", label = "is false" },
 }
-local MATCH = {
-    { value = "all", label = "All of these are true" },
-    { value = "any", label = "Any of these is true" },
-}
 local PROPS = {
     { value = "textcolor", label = "Count colour" },
     { value = "alpha",     label = "Count transparency" },
@@ -575,7 +571,11 @@ for _, s in ipairs(SUBJECTS) do SUBJECT_LABEL[s.value] = s.label end
 
 local CARD_W, HEADER_H, ROW_H = 620, 28, 28
 
-local function NewCheck() return { subject = "casts", op = "<=", value = 1 } end
+local function NewCheck() return { join = "and", subject = "casts", op = "<=", value = 1 } end
+local JOINS = {
+    { value = "and", label = "and" },
+    { value = "or",  label = "or" },
+}
 
 local function NewProp(t)
     local pr = { type = t or "glow", color = Color(1, 0.82, 0), glowType = "button", sound = "raidwarning",
@@ -587,7 +587,7 @@ local function NewProp(t)
 end
 
 local function NewCondition()
-    return { enabled = true, match = "all", checks = { NewCheck() }, props = { NewProp("glow") } }
+    return { enabled = true, checks = { NewCheck() }, props = { NewProp("glow") } }
 end
 
 -- Keeps a check consistent after its subject changes.
@@ -597,24 +597,6 @@ local function FixCheck(ch)
     elseif ch.op == "true" or ch.op == "false" then
         ch.op = "<="
     end
-end
-
-local function Summary(i, c)
-    local ch = c.checks[1]
-    local text = ("%d. "):format(i)
-    if ch then
-        text = text .. "If " .. (SUBJECT_LABEL[ch.subject] or "?")
-        if IS_BOOL[ch.subject] then
-            text = text .. (ch.op == "false" and " is false" or "")
-        else
-            text = text .. " " .. ch.op .. " " .. tostring(ch.value)
-        end
-        if #c.checks > 1 then text = text .. ((c.match == "any") and " or ..." or " and ...") end
-    end
-    local names = {}
-    for _, pr in ipairs(c.props) do names[#names + 1] = PROP_LABEL[pr.type] or pr.type end
-    if #names > 0 then text = text .. ": " .. table.concat(names, ", ") end
-    return text
 end
 
 local function DropFocus()
@@ -654,9 +636,15 @@ function builders.conditions(p)
             FixCheck(row.item)
             Changed()
         end
+        -- The first check reads "If", every later one says how it joins the ones before.
+        row.ifText = UI.Text(row, "If", "GameFontNormal")
+        row.ifText:SetPoint("LEFT", 8, 0)
+        row.join = UI.Dropdown(row, 56, function() return JOINS end,
+            function() return Ch().join or "and" end, function(v) Set("join", v); UI.RefreshAll() end)
+        row.join:SetPoint("LEFT", 0, 0)
         local subject = UI.Dropdown(row, 190, function() return SUBJECTS end,
             function() return Ch().subject end, function(v) Set("subject", v) end)
-        subject:SetPoint("LEFT", 0, 0)
+        subject:SetPoint("LEFT", 62, 0)
         local op = UI.Dropdown(row, 80, function() return IS_BOOL[Ch().subject] and BOOL_OPS or NUMBER_OPS end,
             function() return Ch().op end, function(v) Set("op", v) end)
         op:SetPoint("LEFT", subject, "RIGHT", 6, 0)
@@ -672,7 +660,7 @@ function builders.conditions(p)
             end
             Rebuild()
         end)
-        row.remove:SetPoint("LEFT", subject, "LEFT", 420, 0)
+        row.remove:SetPoint("LEFT", subject, "LEFT", 400, 0)
         return row
     end
 
@@ -811,10 +799,14 @@ function builders.conditions(p)
         card.up = SmallButton(card, "Up", 36, function() Move(-1) end)
         card.up:SetPoint("RIGHT", card.down, "LEFT", -4, 0)
 
-        card.ifLabel = UI.Text(card, "If", "GameFontNormal")
-        card.match = UI.Dropdown(card, 190, function() return MATCH end,
-            function() return card.cond and card.cond.match or "all" end,
-            function(v) if card.cond then card.cond.match = v; Changed() end end)
+        card.nameLabel = UI.Text(card, "Name", "GameFontNormal")
+        card.nameEdit = UI.Edit(card, 220, false, function() return card.cond and card.cond.name or "" end,
+            function(v) if card.cond then card.cond.name = (v ~= "") and v or nil; UI.RefreshAll() end end)
+        card.nameEdit.allowEmpty = true
+        card.nameNote = UI.Text(card, "optional", "GameFontDisableSmall")
+        card.logicNote = UI.Text(card, "\"and\" is checked before \"or\": A or B and C means A, or both B and C.",
+            "GameFontHighlightSmall")
+        card.logicNote:SetTextColor(0.75, 0.75, 0.75)
         card.addCheck = SmallButton(card, "+ Add check", 100, function()
             if card.cond then table.insert(card.cond.checks, NewCheck()) end
             Rebuild()
@@ -826,19 +818,20 @@ function builders.conditions(p)
         end)
         card.warn = UI.Text(card, "Sounds and chat messages only work when every check is one CastCount can see "
             .. "(Spell is free, In combat, Mouse over): Forever hides your mana.", "GameFontHighlightSmall")
-        card.warn:SetWidth(CARD_W - 40)
+        card.warn:SetWidth(CARD_W - 90)
         card.warn:SetTextColor(1, 0.5, 0.3)
 
         -- Lays the card out for its condition and returns its height.
         function card:Layout(index)
             local c = self.cond
-            self.title:SetText(Summary(index, c))
+            self.title:SetText((c.name and c.name ~= "") and c.name or ("Condition " .. index))
             self.toggle:SetNormalTexture(c.collapsed and "Interface\\Buttons\\UI-PlusButton-Up"
                 or "Interface\\Buttons\\UI-MinusButton-Up")
             self.up:SetEnabled(index > 1)
             self.down:SetEnabled(index < #Conds())
             local open = not c.collapsed
-            for _, w in ipairs({ self.ifLabel, self.match, self.addCheck, self.thenLabel, self.addProp, self.warn }) do
+            for _, w in ipairs({ self.nameLabel, self.nameEdit, self.nameNote, self.logicNote, self.addCheck,
+                self.thenLabel, self.addProp, self.warn }) do
                 w:SetShown(open)
             end
             for _, r in ipairs(self.checkRows) do r:Hide() end
@@ -846,18 +839,25 @@ function builders.conditions(p)
             if not open then return HEADER_H + 4 end
 
             local y = -HEADER_H - 4
-            self.ifLabel:ClearAllPoints()
-            self.ifLabel:SetPoint("TOPLEFT", 10, y - 4)
-            self.match:SetShown(#c.checks > 1)
-            self.match:ClearAllPoints()
-            self.match:SetPoint("TOPLEFT", 40, y)
-            if #c.checks > 1 then y = y - 26 end
+            self.nameLabel:ClearAllPoints()
+            self.nameLabel:SetPoint("TOPLEFT", 10, y - 4)
+            self.nameEdit:ClearAllPoints()
+            self.nameEdit:SetPoint("TOPLEFT", 58, y)
+            self.nameNote:ClearAllPoints()
+            self.nameNote:SetPoint("LEFT", self.nameEdit, "RIGHT", 8, 0)
+            y = y - 30
+            local hasAnd, hasOr = false, false
             for ci, ch in ipairs(c.checks) do
                 local r = self.checkRows[ci] or CheckRow(self, ci)
                 self.checkRows[ci] = r
                 r.item = ch
                 r:ClearAllPoints()
-                r:SetPoint("TOPLEFT", 40, y)
+                r:SetPoint("TOPLEFT", 10, y)
+                r.ifText:SetShown(ci == 1)
+                r.join:SetShown(ci > 1)
+                if ci > 1 then
+                    if ch.join == "or" then hasOr = true else hasAnd = true end
+                end
                 local numeric = not IS_BOOL[ch.subject]
                 r.value:SetShown(numeric)
                 r.unit:SetShown(numeric)
@@ -866,8 +866,15 @@ function builders.conditions(p)
                 r:Show()
                 y = y - ROW_H
             end
+            local mixed = hasAnd and hasOr
+            self.logicNote:SetShown(mixed)
+            if mixed then
+                self.logicNote:ClearAllPoints()
+                self.logicNote:SetPoint("TOPLEFT", 72, y - 2)
+                y = y - 18
+            end
             self.addCheck:ClearAllPoints()
-            self.addCheck:SetPoint("TOPLEFT", 40, y)
+            self.addCheck:SetPoint("TOPLEFT", 72, y)
             y = y - 28
 
             self.thenLabel:ClearAllPoints()
@@ -878,7 +885,7 @@ function builders.conditions(p)
                 self.propRows[pi] = r
                 r.item = pr
                 r:ClearAllPoints()
-                r:SetPoint("TOPLEFT", 40, y)
+                r:SetPoint("TOPLEFT", 72, y)
                 r:ShowFor(pr)
                 r:Show()
                 if pr.type == "sound" or pr.type == "chat" then needsLua = true end
@@ -889,11 +896,11 @@ function builders.conditions(p)
             self.warn:SetShown(warn)
             if warn then
                 self.warn:ClearAllPoints()
-                self.warn:SetPoint("TOPLEFT", 40, y - 2)
+                self.warn:SetPoint("TOPLEFT", 72, y - 2)
                 y = y - 30
             end
             self.addProp:ClearAllPoints()
-            self.addProp:SetPoint("TOPLEFT", 40, y)
+            self.addProp:SetPoint("TOPLEFT", 72, y)
             y = y - 30
             return -y + 4
         end

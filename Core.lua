@@ -40,8 +40,9 @@ CC.DEFAULTS = {
         inCombat = true, outOfCombat = true, oocOnlyNotFull = false,
         onHover = true, macros = true,
     },
-    -- Each: { enabled, collapsed, match = "all"|"any",
-    --   checks = { { subject = casts|mana|free|combat|hover, op = < <= = != >= > | true false, value } },
+    -- Each: { enabled, collapsed, name (optional),
+    --   checks = { { join = and|or (2nd check on), subject = casts|mana|free|combat|hover,
+    --                op = < <= = != >= > | true false, value } },
     --   props = { { type = textcolor|alpha|hide|size|offset|text|pulse|glow|tint|sound|chat, ... } } }
     conditions = {},
     -- ManaFill: while a spell can't be afforded, the button fills from the bottom
@@ -96,6 +97,12 @@ local function Migrate(db)
     local OPS = { lt = "<", le = "<=", eq = "=", ne = "!=", gt = ">", ge = ">=", is = "true", isnot = "false" }
     local PROPS = { color = "textcolor", hide = "hide", glow = "glow", pulse = "pulse", sound = "sound" }
     for i, c in ipairs(db.conditions or {}) do
+        if c.checks and c.match then
+            for ci, ch in ipairs(c.checks) do
+                if ci > 1 and not ch.join then ch.join = (c.match == "any") and "or" or "and" end
+            end
+            c.match = nil
+        end
         if not c.checks then
             db.conditions[i] = {
                 enabled = c.enabled, match = "all",

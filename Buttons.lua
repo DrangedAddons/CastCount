@@ -278,16 +278,21 @@ local function TestCheck(ch, k, pct, ctx)
     return false
 end
 
+-- Checks are joined by "and" / "or" (each check after the first carries its own).
+-- "and" binds tighter, as usual: A or B and C means A or (B and C). So the checks
+-- split into groups at every "or", and the condition holds when any group holds.
 local function Matches(c, k, pct, ctx)
     local checks = c.checks or {}
     if #checks == 0 then return false end
-    local any = c.match == "any"
-    for _, ch in ipairs(checks) do
-        local ok = TestCheck(ch, k, pct, ctx)
-        if any and ok then return true end
-        if not any and not ok then return false end
+    local group = true
+    for i, ch in ipairs(checks) do
+        if i > 1 and ch.join == "or" then
+            if group then return true end
+            group = true
+        end
+        if group and not TestCheck(ch, k, pct, ctx) then group = false end
     end
-    return not any
+    return group
 end
 CC.ConditionMatches = Matches
 
