@@ -1,6 +1,6 @@
 ## Interface: 16001
 ## Title: CastCount
-## Notes: Shows how many casts you can afford on the action buttons you choose.
+## Notes: Cast counts on the action buttons you choose: four styled looks, ManaFill as mana returns, and WeakAuras-style conditions (glow, pulse, recolour, sounds). EllesmereUI and Blizzard bars.
 ## Author: Dranged
 ## Version: 2.1.0
 ## OptionalDeps: EllesmereUI, EllesmereUIActionBars
