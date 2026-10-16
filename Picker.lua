@@ -3,7 +3,7 @@
 --  Author: Dranged
 ---------------------------------------------------------
 -- The keybind-style selection mode: every action button on screen gets a
--- clickable cover. Left-click adds, right-click removes, Shift does the whole bar.
+-- clickable cover. A click toggles the button; with Shift, its whole bar.
 
 local ADDON, CC = ...
 local UI = CC.UI
@@ -35,10 +35,45 @@ local function Paint(o)
     o.check:SetShown(sel)
 end
 
+-- Hover highlight: white-blue = clicking adds, red = clicking removes.
+local ADD_COLOR = { 0.7, 0.9, 1 }
+local REMOVE_COLOR = { 1, 0.2, 0.2 }
+local hovered          -- the cover under the mouse
+
+-- The covers a click on o would change: o alone, or with Shift its whole bar (on screen).
+local function Group(o)
+    if not IsShiftKeyDown() then return { o } end
+    local key, group = CC.BarKey(o.btn), {}
+    for _, other in pairs(overlays) do
+        if other:IsShown() and CC.BarKey(other.btn) == key then group[#group + 1] = other end
+    end
+    return group
+end
+
+-- A click removes when everything it would change is already selected, otherwise it adds.
+local function ClickRemoves(group)
+    for _, o in ipairs(group) do
+        if not IsSelected(o.btn) then return false end
+    end
+    return true
+end
+
+local function PaintHover()
+    for _, o in pairs(overlays) do o.hover:Hide() end
+    if not (active and hovered and hovered:IsShown()) then return end
+    local group = Group(hovered)
+    local c = ClickRemoves(group) and REMOVE_COLOR or ADD_COLOR
+    for _, o in ipairs(group) do
+        o.hover:SetColorTexture(c[1], c[2], c[3], 0.4)
+        o.hover:Show()
+    end
+end
+
 function CC.RepaintPicker()
     for _, o in pairs(overlays) do
         if o:IsShown() then Paint(o) end
     end
+    PaintHover()
 end
 
 local function ShowTooltip(o)
@@ -47,14 +82,21 @@ local function ShowTooltip(o)
     local name = spell and CC.SpellName(spell)
     GameTooltip:AddLine(name or "Empty button", 1, 1, 1)
     GameTooltip:AddLine(IsSelected(o.btn) and "|cff33ff55Shows a cast count|r" or "|cff999999No cast count|r")
-    GameTooltip:AddLine("Left-click: add  |  Shift + left-click: add bar", 0.8, 0.8, 0.8)
-    GameTooltip:AddLine("Right-click: remove  |  Shift + right-click: remove bar", 0.8, 0.8, 0.8)
+    local removes = ClickRemoves(Group(o))
+    if IsShiftKeyDown() then
+        GameTooltip:AddLine(removes and "Click: remove this bar" or "Click: add this bar", 0.8, 0.8, 0.8)
+    else
+        GameTooltip:AddLine(removes and "Click: remove this button" or "Click: add this button", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Hold Shift for the whole bar", 0.6, 0.6, 0.6)
+    end
     GameTooltip:Show()
 end
 
-local function OnClick(o, mouse)
+-- Click toggles: if everything it covers is selected it's removed, otherwise it's added.
+-- With Shift it acts on the whole bar, including empty buttons that aren't on screen.
+local function OnClick(o)
     if InCombatLockdown() then return end
-    local add = (mouse == "LeftButton")
+    local add = not ClickRemoves(Group(o))
     if IsShiftKeyDown() then
         local key = CC.BarKey(o.btn)
         for _, btn in ipairs(CC.Candidates(false)) do
@@ -79,22 +121,36 @@ local function Overlay(btn)
     o.fill = o:CreateTexture(nil, "BACKGROUND")
     o.fill:SetPoint("TOPLEFT", 2, -2)
     o.fill:SetPoint("BOTTOMRIGHT", -2, 2)
+    o.hover = o:CreateTexture(nil, "ARTWORK")
+    o.hover:SetAllPoints(o.fill)
+    o.hover:Hide()
     o.check = o:CreateTexture(nil, "OVERLAY")
     o.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
     o.check:SetSize(18, 18)
     o.check:SetPoint("TOPRIGHT", 3, 3)
-    o:SetHighlightTexture(UI.WHITE)
-    local hl = o:GetHighlightTexture()
-    hl:SetVertexColor(1, 1, 1)
-    hl:SetAlpha(0.15)
-    o:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    o:RegisterForClicks("LeftButtonUp")
     o:SetScript("OnClick", OnClick)
-    o:SetScript("OnEnter", ShowTooltip)
-    o:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    o:SetScript("OnEnter", function(self)
+        hovered = self
+        PaintHover()
+        ShowTooltip(self)
+    end)
+    o:SetScript("OnLeave", function(self)
+        if hovered == self then hovered = nil end
+        PaintHover()
+        GameTooltip:Hide()
+    end)
     o.btn = btn
     overlays[btn] = o
     return o
 end
+
+-- Pressing or releasing Shift while hovering switches between button and bar.
+CC.On("MODIFIER_STATE_CHANGED", function()
+    if not (active and hovered) then return end
+    PaintHover()
+    if GameTooltip:GetOwner() == hovered then ShowTooltip(hovered) end
+end)
 
 -- Covers every button on screen. Returns false (with a message) in combat.
 function CC.StartPicking()
@@ -111,6 +167,7 @@ end
 
 function CC.StopPicking()
     active = false
+    hovered = nil
     for _, o in pairs(overlays) do
         if GameTooltip:GetOwner() == o then GameTooltip:Hide() end
         o:Hide()

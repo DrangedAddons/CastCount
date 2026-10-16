@@ -68,10 +68,9 @@ function builders.buttons(p)
     Heading(p, "Choose which action buttons show a cast count", 0, 0)
     local lines = {
         "While this tab is open your action buttons are covered, like the game's key binding mode:",
-        "    |cffffd100Left-click|r a button to add it",
-        "    |cffffd100Shift + left-click|r to add its whole bar",
-        "    |cffffd100Right-click|r a button to remove it",
-        "    |cffffd100Shift + right-click|r to remove its whole bar",
+        "    |cffffd100Click|r a button to add it, click it again to remove it",
+        "    Hold |cffffd100Shift|r to do the same for its whole bar",
+        "    |cffb3e6ffBlue|r highlight: the click adds  ·  |cffff3333red|r highlight: the click removes",
         "Selected buttons are green with a tick. Hover a button to see its spell.",
     }
     local y = -26
@@ -239,8 +238,44 @@ local ANCHORS = {
     { value = "BOTTOMRIGHT", label = "Bottom right" },
 }
 
+-- The spell icon and size of the first selected mana-spell button, for the preview.
+local function PreviewSource()
+    for name in pairs(CC.char.buttons) do
+        local btn = _G[name]
+        local spell = type(btn) == "table" and btn.GetObjectType and CC.ButtonSpell(btn)
+        if spell and CC.SpellCost(spell) == "mana" then
+            local w = btn:GetWidth()
+            return CC.SpellIcon(spell), (w and w > 10) and w or 45
+        end
+    end
+    return "Interface\\Icons\\Spell_Frost_FrostBolt02", 45
+end
+
+-- A mock action button showing a count in the current text style.
+local function PreviewButton(parent, scale)
+    local b = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    b:SetScale(scale)
+    UI.Backdrop(b, 0, 0, 0, 1, 0, 0, 0, 1)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetPoint("TOPLEFT", 1, -1)
+    b.icon:SetPoint("BOTTOMRIGHT", -1, 1)
+    b.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+    local h = CreateFrame("Frame", nil, b)
+    h:SetAllPoints(b)
+    h:SetFrameLevel(b:GetFrameLevel() + 2)
+    h.text = h:CreateFontString(nil, "OVERLAY")
+    b.holder = h
+    return b
+end
+
 function builders.text(p)
     local function T() return CC.db.text end
+    local UpdatePreview
+    -- Restyle the real buttons and the preview together.
+    local function StyleChanged()
+        CC.ApplyStyle()
+        if UpdatePreview then UpdatePreview() end
+    end
 
     Heading(p, "Font", 0, 0)
     local font = UI.Dropdown(p, 220, function()
@@ -292,6 +327,66 @@ function builders.text(p)
     reset:SetPoint("TOPLEFT", 0, -290)
 
     Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -370)
+
+    -- Preview, on the right: one big button with a normal count, and smaller
+    -- real-size ones showing a low-count rule colour and an empty count.
+    local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
+    box:SetSize(170, 300)
+    box:SetPoint("TOPRIGHT", 0, 0)
+    UI.Backdrop(box, 0.03, 0.03, 0.035, 0.9)
+    local title = UI.Text(box, "Preview", "GameFontNormal")
+    title:SetPoint("TOP", 0, -8)
+    title:SetJustifyH("CENTER")
+
+    local big = PreviewButton(box, 2)
+    local small = { PreviewButton(box, 1), PreviewButton(box, 1) }
+    local labels = {}
+    for i = 1, 2 do
+        labels[i] = UI.Text(box, "", "GameFontHighlightSmall")
+        labels[i]:SetPoint("TOP", small[i], "BOTTOM", 0, -4)
+        labels[i]:SetJustifyH("CENTER")
+    end
+
+    UpdatePreview = function()
+        if not box:IsVisible() then return end
+        local icon, size = PreviewSource()
+        local path = CC.FontPath(T().font)
+        -- Real size inside a box the scaled button must fit (2x, at most 140 wide).
+        local bigScale = math.min(2, 140 / size)
+        big:SetScale(bigScale)
+        big:SetSize(size, size)
+        big:ClearAllPoints()
+        big:SetPoint("TOP", box, "TOP", 0, -32 / bigScale)
+
+        -- The highest rule shows its colour on the left small button; 0 casts on the right.
+        local rules, ruleAt = CC.db.rules, nil
+        if rules.enabled then
+            for _, rule in ipairs(rules.list) do
+                if not ruleAt or rule.at > ruleAt then ruleAt = rule.at end
+            end
+        end
+        local counts = { { 12, "12 casts" }, { ruleAt or 3, ruleAt and "Low count" or "3 casts" }, { 0, "Out of mana" } }
+
+        local function Fill(b, n)
+            b.icon:SetTexture(icon)
+            CC.StyleHolder(b.holder, path)
+            local c = CC.CountColor(n)
+            b.holder.text:SetText(n)
+            b.holder.text:SetTextColor(c.r, c.g, c.b, c.a or 1)
+        end
+        Fill(big, counts[1][1])
+        local smallScale = math.min(1, 60 / size)
+        for i, b in ipairs(small) do
+            b:SetScale(smallScale)
+            b:SetSize(size, size)
+            b:ClearAllPoints()
+            b:SetPoint("TOP", box, "TOPLEFT", (i == 1 and 45 or 125) / smallScale, -(32 + size * bigScale + 24) / smallScale)
+            Fill(b, counts[i + 1][1])
+            labels[i]:SetText(counts[i + 1][2])
+        end
+    end
+    box:SetScript("OnShow", UpdatePreview)
+    Refresher(function() UpdatePreview() end)
 end
 
 ---------------------------------------------------------
