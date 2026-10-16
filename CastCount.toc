@@ -1,12 +1,18 @@
 ## Interface: 16001
 ## Title: CastCount
-## Notes: Shows how many casts you can afford on each action button.
+## Notes: Shows how many casts you can afford on the action buttons you choose.
 ## Author: Dranged
-## Version: 1.0.0
+## Version: 2.0.0
+## OptionalDeps: EllesmereUI, EllesmereUIActionBars
 ## X-DrangedAddons-Games: _classic_beta_, _forever_
 ## SavedVariables: CastCountDB
+## SavedVariablesPerCharacter: CastCountCharDB
+## IconTexture: Interface\Icons\Spell_Holy_MagicalSentry
+## AddonCompartmentFunc: CastCount_OnCompartmentClick
 
 Core.lua
+Widgets.lua
+Spells.lua
+Buttons.lua
+Picker.lua
 Config.lua
-Overlay.lua
-Options.lua

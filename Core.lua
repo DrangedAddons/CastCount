@@ -2,242 +2,167 @@
 --  CastCount - Core
 --  Author: Dranged
 ---------------------------------------------------------
+-- Saved settings, events and slash commands. The other files hang their
+-- functions off the shared CC table.
+
+local ADDON, CC = ...
+_G.CastCount = CC
+
+CC.UI = {}
+CC.MANA = (Enum and Enum.PowerType and Enum.PowerType.Mana) or 0
+
+local function Color(r, g, b, a) return { r = r, g = g, b = b, a = a or 1 } end
+CC.Color = Color
 
 ---------------------------------------------------------
---  SECTION: Addon table and forward declarations
+--  SECTION: Defaults
 ---------------------------------------------------------
-local addonName, CC = ...
+-- Account-wide: how the numbers look and when they show.
+CC.DEFAULTS = {
+    text = {
+        font = "Friz Quadrata TT", size = 18, outline = "OUTLINE", shadow = false,
+        color = Color(0, 1, 0), anchor = "CENTER", x = 0, y = 0,
+    },
+    show = {
+        inCombat = true, outOfCombat = true, oocOnlyNotFull = false,
+        onHover = true, macros = true,
+    },
+    free = { mode = "hide", text = "Free", color = Color(0.4, 0.8, 1) },
+    rules = {
+        enabled = true,
+        list = {
+            { at = 0, color = Color(1, 0.2, 0.2) },
+            { at = 3, color = Color(1, 0.65, 0) },
+        },
+    },
+}
 
-CC = CC or {}
-CC.frame = CreateFrame("Frame")
+-- Per character: which buttons show counts (by button name) and which
+-- spells never do (by spell name, so every rank is covered; value = a spell ID for the icon).
+CC.CHAR_DEFAULTS = { buttons = {}, blacklist = {} }
 
-local NormalizeBarName
-
----------------------------------------------------------
---  SECTION: Config initialization (defaults after SV)
----------------------------------------------------------
-function CC:InitConfig()
-    CastCountDB = CastCountDB or {}
-
-    -- Bar visibility config
-    CastCountDB.bars = CastCountDB.bars or {}
-
-    local defaults = {
-        ActionBar1 = true,
-        ActionBar2 = true,
-        ActionBar3 = true,
-        ActionBar4 = true,
-        ActionBar5 = true,
-        ActionBar6 = true,
-		ActionBar7 = true,
-		ActionBar8 = true,
-    }
-
-    for bar, defaultValue in pairs(defaults) do
-        if CastCountDB.bars[bar] == nil then
-            CastCountDB.bars[bar] = defaultValue
-        end
-    end
-
-    -- Spell ignore list
-    CastCountDB.onlyInCombat = CastCountDB.onlyInCombat or false
-	CastCountDB.alwaysShow = CastCountDB.alwaysShow or false
-
-    CastCountDB.ignoreList = CastCountDB.ignoreList or {}
+local function CopyDeep(v)
+    if type(v) ~= "table" then return v end
+    local t = {}
+    for k, x in pairs(v) do t[k] = CopyDeep(x) end
+    return t
 end
+CC.CopyDeep = CopyDeep
 
-
----------------------------------------------------------
---  SECTION: Bar name normalization (DFUI / Classic)
----------------------------------------------------------
-NormalizeBarName = function(parentName)
-    if not parentName then return nil end
-
-    -- DFUI Classic Anniversary bar frames (with 4 & 5 swapped)
-    local dfuiBars = {
-        DragonflightUIActionbarFrame1 = "ActionBar1",
-        DragonflightUIActionbarFrame2 = "ActionBar2",
-        DragonflightUIActionbarFrame3 = "ActionBar3",
-        DragonflightUIActionbarFrame4 = "ActionBar5", -- swapped
-        DragonflightUIActionbarFrame5 = "ActionBar4", -- swapped
-        DragonflightUIActionbarFrame6 = "ActionBar6",
-        DragonflightUIActionbarFrame7 = "ActionBar7",
-        DragonflightUIActionbarFrame8 = "ActionBar8",
-    }
-
-    if dfuiBars[parentName] then
-        return dfuiBars[parentName]
-    end
-
-    -- NEW: Retail DFUI parent for ActionBar1 (TBC Anniversary update)
-    if parentName == "MainActionBarButtonContainer1" then
-        return "ActionBar1"
-    end
-
-    -- Legacy DFUI parent for ActionBar1
-    if parentName == "MainMenuBarArtFrame" then
-        return "ActionBar1"
-    end
-
-    -- Blizzard Classic fallback
-    local knownBars = {
-        ActionBar1 = "ActionBar1",
-        ActionBar2 = "ActionBar2",
-        ActionBar3 = "ActionBar3",
-        ActionBar4 = "ActionBar4",
-        ActionBar5 = "ActionBar5",
-        ActionBar6 = "ActionBar6",
-        ActionBar7 = "ActionBar7",
-        ActionBar8 = "ActionBar8",
-        MultiBarBottomLeft = "ActionBar2",
-        MultiBarBottomRight = "ActionBar3",
-        MultiBarRight = "ActionBar4",
-        MultiBarLeft = "ActionBar5",
-    }
-
-    return knownBars[parentName] or nil
-end
-
----------------------------------------------------------
---  SECTION: Spell cost helper
----------------------------------------------------------
-function CC:GetSpellCost(spellID)
-    if not spellID then return nil end
-    local costTable = GetSpellPowerCost(spellID)
-    if not costTable then return nil end
-
-    for _, costInfo in ipairs(costTable) do
-        if costInfo.type == 0 then -- mana
-            return costInfo.cost
-        end
-    end
-    return nil
-end
-
----------------------------------------------------------
---  SECTION: Button update logic (with ignore list)
----------------------------------------------------------
-function CC:UpdateButton(button)
-    local action = button.action
-    if not action then
-        CC.Overlay:Hide(button)
-        return
-    end
-
-    local actionType, id = GetActionInfo(action)
-    if actionType ~= "spell" then
-        CC.Overlay:Hide(button)
-        return
-    end
-
--- Always show overrides everything
-if CastCountDB.alwaysShow then
-    -- do nothing, continue to normal overlay logic
-else
-    -- Combat-only mode (but show if mana < 100%)
-    if CastCountDB.onlyInCombat then
-        local inCombat = UnitAffectingCombat("player")
-        local mana = UnitPower("player", 0)
-        local maxMana = UnitPowerMax("player", 0)
-
-        if not inCombat and mana == maxMana then
-            CC.Overlay:Hide(button)
-            return
+-- Fills missing keys. Lists (rules.list) are copied whole only when missing,
+-- so a user who removed the default rules doesn't get them back.
+local function FillDefaults(dst, src)
+    for k, v in pairs(src) do
+        if dst[k] == nil then
+            dst[k] = CopyDeep(v)
+        elseif type(v) == "table" and type(dst[k]) == "table" and v[1] == nil then
+            FillDefaults(dst[k], v)
         end
     end
 end
 
-    -- Ignore list check
-    if CastCountDB.ignoreList and CastCountDB.ignoreList[id] then
-        CC.Overlay:Hide(button)
-        return
-    end
-
-
-    local cost = CC:GetSpellCost(id)
-    if not cost or cost == 0 then
-        CC.Overlay:Hide(button)
-        return
-    end
-
-    local mana = UnitPower("player", 0)
-    local casts = math.floor(mana / cost)
-
-    CC.Overlay:SetText(button, casts)
+-- Puts one section of the account settings (text, show, free, rules) back to its defaults.
+function CC.ResetSection(key)
+    CC.db[key] = CopyDeep(CC.DEFAULTS[key])
 end
 
 ---------------------------------------------------------
---  SECTION: Update all buttons (with safe bar filtering)
+--  SECTION: Helpers
 ---------------------------------------------------------
-function CC:UpdateAllButtons()
-    if not ActionBarButtonEventsFrame or not ActionBarButtonEventsFrame.frames then
-        return
+-- WoW Forever can hand out "secret" values in combat; they can't be compared or
+-- used in maths, so anything read from the game goes through this first.
+function CC.Plain(v)
+    return v ~= nil and not (issecretvalue and issecretvalue(v))
+end
+
+function CC.Print(msg)
+    print("|cff33ff99CastCount|r: " .. tostring(msg))
+end
+
+local BUILTIN_FONTS = {
+    { "Friz Quadrata TT", "Fonts\\FRIZQT__.TTF" },
+    { "Arial Narrow",     "Fonts\\ARIALN.TTF" },
+    { "Morpheus",         "Fonts\\MORPHEUS.TTF" },
+    { "Skurri",           "Fonts\\SKURRI.TTF" },
+}
+CC.DEFAULT_FONT = BUILTIN_FONTS[1][2]
+
+-- The game's fonts plus any registered with LibSharedMedia (EllesmereUI and others).
+function CC.Fonts()
+    local list, seen = {}, {}
+    for _, f in ipairs(BUILTIN_FONTS) do
+        list[#list + 1] = { name = f[1], path = f[2] }
+        seen[f[1]] = true
     end
-
-    for _, button in ipairs(ActionBarButtonEventsFrame.frames) do
-        if button and button.action then
-            local parent = button:GetParent()
-            local rawName = parent and parent:GetName()
-            local barName = NormalizeBarName(rawName)
-
-            -- If we can map to a known bar, respect config.
-            if barName then
-                if CastCountDB.bars[barName] then
-                    CC:UpdateButton(button)
-                else
-                    CC.Overlay:Hide(button)
-                end
-            else
-                -- Unknown bar → show overlays by default
-                CC:UpdateButton(button)
+    local LSM = LibStub and LibStub("LibSharedMedia-3.0", true)
+    if LSM then
+        for _, name in ipairs(LSM:List("font") or {}) do
+            if not seen[name] then
+                seen[name] = true
+                list[#list + 1] = { name = name, path = LSM:Fetch("font", name) }
             end
         end
     end
+    table.sort(list, function(a, b) return a.name:lower() < b.name:lower() end)
+    return list
+end
+
+function CC.FontPath(name)
+    for _, f in ipairs(CC.Fonts()) do
+        if f.name == name then return f.path end
+    end
+    return CC.DEFAULT_FONT
 end
 
 ---------------------------------------------------------
---  SECTION: Events and main update
+--  SECTION: Events
 ---------------------------------------------------------
-local events = {
-    "ADDON_LOADED",
-    "PLAYER_ENTERING_WORLD",
-    "UNIT_POWER_UPDATE",
-    "ACTIONBAR_SLOT_CHANGED",
-    "SPELLS_CHANGED",
-    "PLAYER_TALENT_UPDATE",
-}
+-- Registering an event the client doesn't have throws, so every event is
+-- checked first and quietly skipped when missing.
+local eventFrame = CreateFrame("Frame")
+local handlers = {}
 
-for _, e in ipairs(events) do
-    CC.frame:RegisterEvent(e)
-end
-
-CC.frame:SetScript("OnEvent", function(_, event, arg1)
-    if event == "ADDON_LOADED" and arg1 == addonName then
-        CC:InitConfig()
-        C_Timer.After(0.1, function()
-            CC:UpdateAllButtons()
-        end)
-        return
-    end
-
-    if event == "PLAYER_ENTERING_WORLD" then
-        C_Timer.After(0.1, function()
-            CC:UpdateAllButtons()
-        end)
-        return
-    end
-
-    if event == "UNIT_POWER_UPDATE" then
-        if arg1 == "player" then
-            CC:UpdateAllButtons()
+function CC.On(event, fn)
+    if not handlers[event] then
+        if C_EventUtils and C_EventUtils.IsEventValid and not C_EventUtils.IsEventValid(event) then
+            return false
         end
-        return
+        if not pcall(eventFrame.RegisterEvent, eventFrame, event) then return false end
+        handlers[event] = {}
     end
+    table.insert(handlers[event], fn)
+    return true
+end
 
-    if event == "ACTIONBAR_SLOT_CHANGED"
-        or event == "SPELLS_CHANGED"
-        or event == "PLAYER_TALENT_UPDATE" then
-        CC:UpdateAllButtons()
-        return
-    end
+eventFrame:SetScript("OnEvent", function(_, event, ...)
+    local list = handlers[event]
+    if not list then return end
+    for _, fn in ipairs(list) do fn(event, ...) end
 end)
+
+local readyCallbacks = {}
+-- Runs fn once the saved settings are loaded.
+function CC.OnReady(fn)
+    if CC.db then fn() else readyCallbacks[#readyCallbacks + 1] = fn end
+end
+
+CC.On("ADDON_LOADED", function(_, name)
+    if name ~= ADDON then return end
+    CastCountDB = CastCountDB or {}
+    FillDefaults(CastCountDB, CC.DEFAULTS)
+    CC.db = CastCountDB
+    CastCountCharDB = CastCountCharDB or {}
+    FillDefaults(CastCountCharDB, CC.CHAR_DEFAULTS)
+    CC.char = CastCountCharDB
+    for _, fn in ipairs(readyCallbacks) do fn() end
+    wipe(readyCallbacks)
+end)
+
+---------------------------------------------------------
+--  SECTION: Slash commands
+---------------------------------------------------------
+SLASH_CASTCOUNT1 = "/castcount"
+SLASH_CASTCOUNT2 = "/ccount"
+SlashCmdList.CASTCOUNT = function()
+    if CC.ToggleConfig then CC.ToggleConfig() end
+end
