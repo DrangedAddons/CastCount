@@ -256,6 +256,11 @@ local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", fr
 local function PreviewButton(parent, onClick)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
     UI.Backdrop(b, 0, 0, 0, 1, 0, 0, 0, 1)
+    b.sel = parent:CreateTexture(nil, "BORDER")
+    b.sel:SetColorTexture(1, 0.82, 0, 1)
+    b.sel:SetPoint("TOPLEFT", b, "TOPLEFT", -3, 3)
+    b.sel:SetPoint("BOTTOMRIGHT", b, "BOTTOMRIGHT", 3, -3)
+    b.sel:Hide()
     b.icon = b:CreateTexture(nil, "ARTWORK")
     b.icon:SetPoint("TOPLEFT", 1, -1)
     b.icon:SetPoint("BOTTOMRIGHT", -1, 1)
@@ -293,10 +298,13 @@ function builders.text(p)
         UI.RefreshAll()
     end
 
+    -- Title naming the look being edited, so it's always clear which one the settings change.
+    local lookTitle = UI.Text(p, "", "GameFontNormalLarge")
+    lookTitle:SetPoint("TOPLEFT", 0, -2)
     local styleLabel = UI.Text(p, "Edit:", "GameFontNormal")
-    styleLabel:SetPoint("TOPLEFT", 0, -4)
+    styleLabel:SetPoint("TOPLEFT", 0, -30)
     local which = UI.Dropdown(p, 160, LookItems, function() return editing end, Select)
-    which:SetPoint("TOPLEFT", 44, 0)
+    which:SetPoint("TOPLEFT", 44, -26)
     -- Copies one look's style onto another, keeping the target's colour (and the
     -- Free look's own text).
     local function CopyLook(from, to)
@@ -344,7 +352,7 @@ function builders.text(p)
     -- When each look applies.
     local lowRow = CreateFrame("Frame", nil, p)
     lowRow:SetSize(400, 22)
-    lowRow:SetPoint("TOPLEFT", 0, -30)
+    lowRow:SetPoint("TOPLEFT", 0, -56)
     local lowText = UI.Text(lowRow, "Use this look from 1 up to")
     lowText:SetPoint("LEFT", 0, 0)
     local lowAt = UI.Edit(lowRow, 36, true, function() return CC.db.lowAt end,
@@ -354,7 +362,7 @@ function builders.text(p)
     lowText2:SetPoint("LEFT", lowAt, "RIGHT", 6, 0)
     local freeRow = CreateFrame("Frame", nil, p)
     freeRow:SetSize(440, 22)
-    freeRow:SetPoint("TOPLEFT", 0, -30)
+    freeRow:SetPoint("TOPLEFT", 0, -56)
     local freeLabel = UI.Text(freeRow, "Show")
     freeLabel:SetPoint("LEFT", 0, 0)
     local freeText = UI.Edit(freeRow, 70, false, function() return CC.db.looks.free.text end,
@@ -362,11 +370,12 @@ function builders.text(p)
     freeText:SetPoint("LEFT", freeLabel, "RIGHT", 10, 0)
     local freeNote = UI.Text(freeRow, "when a mana spell is free right now (Clearcasting...)", "GameFontHighlightSmall")
     freeNote:SetPoint("LEFT", freeText, "RIGHT", 8, 0)
-    local when = Note(p, "", 0, -34, 440)
+    local when = Note(p, "", 0, -60, 440)
     Refresher(function()
         lowRow:SetShown(editing == "low")
         freeRow:SetShown(editing == "free")
         when:SetShown(editing == "normal" or editing == "oom" or editing == "fill")
+        lookTitle:SetText(editing == "fill" and "ManaFill" or (CC.LOOK_LABELS[editing] .. " look"))
         copy:SetShown(editing ~= "normal" and editing ~= "fill")
         applyAll:SetShown(editing ~= "fill")
         applyAll:ClearAllPoints()
@@ -380,7 +389,7 @@ function builders.text(p)
         end
     end)
 
-    local y0 = -64
+    local y0 = -90
     local lp = CreateFrame("Frame", nil, p)
     lp:SetAllPoints(p)
     Heading(lp, "Font", 0, y0)
@@ -432,7 +441,16 @@ function builders.text(p)
         StyleChanged()
         UI.RefreshAll()
     end)
-    reset:SetPoint("TOPLEFT", 0, y0 - 282)
+    local resetOne = UI.Button(lp, "Reset this look", 130, 22, function()
+        if CC.DEFAULTS.looks[editing] then
+            CC.db.looks[editing] = CC.CopyDeep(CC.DEFAULTS.looks[editing])
+            if editing == "low" then CC.db.lowAt = CC.DEFAULTS.lowAt end
+        end
+        StyleChanged()
+        UI.RefreshAll()
+    end)
+    resetOne:SetPoint("TOPLEFT", 0, y0 - 276)
+    reset:SetPoint("LEFT", resetOne, "RIGHT", 8, 0)
 
 
     -- ManaFill settings, shown instead of the look settings when ManaFill is picked.
@@ -465,7 +483,7 @@ function builders.text(p)
         fp:SetShown(editing == "fill")
     end)
 
-    Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -380)
+    Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -394)
 
     -- Preview, on the right: Normal big, Low count, Out of mana and Free smaller.
     -- Clicking one picks that look to edit.
@@ -518,6 +536,7 @@ function builders.text(p)
             b.fs:SetTextColor(look.color.r, look.color.g, look.color.b, look.color.a or 1)
             CC.StyleFill(b.fill)
             b.fill:SetShown(CC.db.fill.enabled and (key == "oom" or key == "fill"))
+            b.sel:SetShown(key == editing)
             if key == editing then
                 b:SetBackdropBorderColor(1, 0.82, 0, 1)
             else
