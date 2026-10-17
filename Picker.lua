@@ -176,12 +176,97 @@ end
 
 function CC.IsPicking() return active end
 
--- The covers would swallow clicks meant for spells, so combat always closes them.
+---------------------------------------------------------
+--  SECTION: Button Mode
+---------------------------------------------------------
+-- Like the game's Quick Keybind Mode (/kb): the settings close, your bars are
+-- covered, and a popup sums up the controls. Okay keeps the changes; Cancel (or
+-- Escape) puts the selection back the way it was. Either way the settings reopen.
+local modeActive, before, dialog
+
+local function Dialog()
+    if dialog then return dialog end
+    dialog = CreateFrame("Frame", "CastCountButtonMode", UIParent, "BackdropTemplate")
+    dialog:SetSize(540, 220)
+    dialog:SetPoint("TOP", UIParent, "TOP", 0, -120)
+    dialog:SetFrameStrata("FULLSCREEN_DIALOG")
+    UI.Backdrop(dialog, 0.05, 0.05, 0.06, 0.95, 0.4, 0.4, 0.42, 1)
+    dialog:EnableMouse(true)
+    dialog:SetMovable(true)
+    dialog:SetClampedToScreen(true)
+    dialog:RegisterForDrag("LeftButton")
+    dialog:SetScript("OnDragStart", dialog.StartMoving)
+    dialog:SetScript("OnDragStop", dialog.StopMovingOrSizing)
+
+    local title = UI.Text(dialog, "CastCount Button Mode", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -14)
+    title:SetJustifyH("CENTER")
+    local body = UI.Text(dialog, "You are in CastCount Button Mode. Perform the below actions on your action buttons.\n\n"
+        .. "|cffffd100Click|r to add/remove CastCount on the action button\n"
+        .. "|cffffd100Shift+Click|r to add/remove CastCount on the whole action bar\n\n"
+        .. "Already selected buttons are |cff33ff55green|r.")
+    body:SetPoint("TOP", 0, -44)
+    body:SetWidth(490)
+    body:SetJustifyH("CENTER")
+    local cancelNote = UI.Text(dialog, "Canceling will undo your changes and leave CastCount Button Mode.")
+    cancelNote:SetPoint("BOTTOM", 0, 50)
+    cancelNote:SetWidth(490)
+    cancelNote:SetJustifyH("CENTER")
+
+    local okay = UI.Button(dialog, OKAY or "Okay", 130, 24, function() CC.EndButtonMode(true, true) end)
+    okay:SetPoint("BOTTOMLEFT", 30, 16)
+    local clear = UI.Button(dialog, "Remove All", 130, 24, function() CC.ClearSelection() end)
+    clear:SetPoint("BOTTOM", 0, 16)
+    local cancel = UI.Button(dialog, CANCEL or "Cancel", 130, 24, function() CC.EndButtonMode(false, true) end)
+    cancel:SetPoint("BOTTOMRIGHT", -30, 16)
+
+    -- Escape hides the popup: that counts as Cancel.
+    dialog:SetScript("OnHide", function()
+        if modeActive then CC.EndButtonMode(false, true) end
+    end)
+    tinsert(UISpecialFrames, "CastCountButtonMode")
+    return dialog
+end
+
+function CC.StartButtonMode()
+    if modeActive then return end
+    if InCombatLockdown() then
+        CC.Print("Button Mode opens after combat.")
+        return
+    end
+    modeActive = true
+    before = CC.CopyDeep(CC.char.buttons)
+    if CC.HideConfig then CC.HideConfig() end
+    CC.StartPicking()
+    Dialog():Show()
+end
+
+-- keep: keep the changes (Okay) or put the old selection back (Cancel);
+-- reopen: show the settings again afterwards.
+function CC.EndButtonMode(keep, reopen)
+    if not modeActive then return end
+    modeActive = false
+    if not keep and before then
+        wipe(CC.char.buttons)
+        for name, on in pairs(before) do CC.char.buttons[name] = on end
+    end
+    before = nil
+    CC.StopPicking()
+    if dialog then dialog:Hide() end
+    CC.MarkDirty()
+    UI.RefreshAll()
+    if reopen and CC.ShowConfig then CC.ShowConfig() end
+end
+
+function CC.InButtonMode() return modeActive end
+
+-- The covers would swallow clicks meant for spells, so combat always ends the mode.
 CC.On("PLAYER_REGEN_DISABLED", function()
-    if active then
+    if modeActive then
+        CC.EndButtonMode(true, false)
+        CC.Print("Button Mode closed for combat; your changes are kept.")
+    elseif active then
         CC.StopPicking()
-        CC.Print("Button selection paused for combat.")
-        CC.pickingPaused = true
     end
 end)
 

@@ -62,14 +62,15 @@ local builders = {}
 
 function builders.buttons(p)
     Heading(p, "Choose which action buttons show a cast count", 0, 0)
+    local choose = UI.Button(p, "Choose buttons", 170, 26, function() CC.StartButtonMode() end)
+    choose:SetPoint("TOPLEFT", 0, -26)
     local lines = {
-        "While this tab is open your action buttons are covered, like the game's key binding mode:",
-        "    |cffffd100Click|r a button to add it, click it again to remove it",
-        "    Hold |cffffd100Shift|r to do the same for its whole bar",
-        "    |cffb3e6ffBlue|r highlight: the click adds  ·  |cffff3333red|r highlight: the click removes",
-        "Selected buttons are green with a tick. Hover a button to see its spell.",
+        "Choose buttons opens CastCount Button Mode. Perform the below actions on your action buttons:",
+        "    |cffffd100Click|r to add/remove CastCount on the action button",
+        "    |cffffd100Shift+Click|r to add/remove CastCount on the whole action bar",
+        "Already selected buttons are |cff33ff55green|r.",
     }
-    local y = -26
+    local y = -66
     for _, line in ipairs(lines) do
         local fs = UI.Text(p, line)
         fs:SetPoint("TOPLEFT", 0, y)
@@ -82,7 +83,7 @@ function builders.buttons(p)
     clear:SetPoint("LEFT", addAll, "RIGHT", 10, 0)
 
     Note(p, "Works with Blizzard's action bars and EllesmereUI. Your selection is saved per character. "
-        .. "Combat pauses the selection; it comes back when combat ends.", 0, -330)
+        .. "You can also type /cc buttons. Combat closes Button Mode and keeps your changes.", 0, -330)
 end
 
 ---------------------------------------------------------
@@ -1054,12 +1055,6 @@ local function ShowTab(key)
     for k, p in pairs(pages) do p:SetShown(k == key) end
     UI.CloseMenu()
     CC.preview = PREVIEW[key] or false
-    CC.pickingPaused = nil
-    if key == "buttons" then
-        if not CC.StartPicking() then CC.pickingPaused = true end
-    else
-        CC.StopPicking()
-    end
     UI.RefreshAll()
     CC.MarkDirty()
 end
@@ -1140,13 +1135,9 @@ function CC.ToggleConfig()
     if win and win:IsShown() then win:Hide() else CC.ShowConfig() end
 end
 
--- Combat closed the picker; reopen it if the Buttons tab is still up.
-CC.On("PLAYER_REGEN_ENABLED", function()
-    if CC.pickingPaused and win and win:IsShown() and current == "buttons" then
-        CC.pickingPaused = nil
-        CC.StartPicking()
-    end
-end)
+function CC.HideConfig()
+    if win then win:Hide() end
+end
 
 -- The addon list button (top of the minimap) opens the window too.
 function CastCount_OnCompartmentClick()

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.3.0
+- **CastCount Button Mode**, like the game's Quick Keybind Mode: the Buttons tab's **Choose buttons** (or `/cc buttons`) closes the settings, covers your action buttons and shows a popup with the controls. **Okay** keeps your changes, **Remove All** clears them, **Cancel** or Escape undoes everything since you opened it. The Buttons tab itself no longer covers your bars.
+- Buttons tab text: Click to add/remove CastCount on an action button, Shift+Click for the whole action bar; already selected buttons are green.
+
 ## 2.2.2
 - Conditions: click anywhere on a card's title bar (not just the + / -) to expand or collapse it.
 - The title bar has its own slightly lighter background, with a thin gold line under it while the card is open.

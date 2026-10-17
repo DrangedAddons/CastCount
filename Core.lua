@@ -275,8 +275,13 @@ SLASH_CASTCOUNT1 = "/castcount"
 SLASH_CASTCOUNT2 = "/ccount"
 SLASH_CASTCOUNT3 = "/cc"
 SlashCmdList.CASTCOUNT = function(msg)
-    if (msg or ""):lower():match("^%s*debug") then
+    msg = (msg or ""):lower()
+    if msg:match("^%s*debug") then
         if CC.Debug then CC.Debug() end
+        return
+    end
+    if msg:match("^%s*buttons") then
+        if CC.StartButtonMode then CC.StartButtonMode() end
         return
     end
     if CC.ToggleConfig then CC.ToggleConfig() end

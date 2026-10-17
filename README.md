@@ -14,7 +14,7 @@ A World of Warcraft addon for WoW Forever (and the Classic beta) that shows how 
 
 ## Using it
 - `/cc` (or `/castcount`, `/ccount`), the minimap button, the addon list button or Options > AddOns > CastCount opens the settings.
-- **Buttons:** while this tab is open your action buttons are covered. White-blue highlight = the click adds, red = it removes.
+- **Buttons:** Choose buttons (or `/cc buttons`) opens CastCount Button Mode, like Quick Keybind Mode: Click adds/removes CastCount on an action button, Shift+Click on a whole bar; selected buttons are green. Okay keeps your changes, Cancel undoes them.
 - **Blacklist, Appearance, Visibility, Conditions:** everything above.
 - `/cc debug` prints what the game reports for mana and spell costs.
 
