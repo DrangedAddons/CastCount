@@ -841,7 +841,7 @@ function builders.conditions(p)
         card.header:SetPoint("TOPLEFT", 1, -1)
         card.header:SetPoint("TOPRIGHT", -1, -1)
         card.header:SetHeight(HEADER_H - 2)
-        card.header:SetFrameLevel(card:GetFrameLevel())
+
         card.header:SetHighlightTexture(UI.WHITE)
         card.header:GetHighlightTexture():SetVertexColor(1, 1, 1)
         card.header:GetHighlightTexture():SetAlpha(0.05)
@@ -914,6 +914,12 @@ function builders.conditions(p)
         -- Lays the card out for its condition and returns its height.
         function card:Layout(index)
             local c = self.cond
+            -- Title bar above the card's body, its own buttons above the bar.
+            local base = self:GetFrameLevel()
+            self.header:SetFrameLevel(base + 4)
+            for _, w in ipairs({ self.toggle, self.enabled, self.up, self.down, self.copy, self.delete }) do
+                w:SetFrameLevel(base + 6)
+            end
             self.title:SetText((c.name and c.name ~= "") and c.name or ("Condition " .. index))
             self.toggle:SetNormalTexture(c.collapsed and "Interface\\Buttons\\UI-PlusButton-Up"
                 or "Interface\\Buttons\\UI-MinusButton-Up")
