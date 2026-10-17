@@ -831,13 +831,26 @@ function builders.conditions(p)
         UI.Backdrop(card, 0.08, 0.08, 0.09, 0.95)
         card.checkRows, card.propRows = {}, {}
 
+        local function ToggleCollapsed()
+            if card.cond then card.cond.collapsed = not card.cond.collapsed end
+            Rebuild()
+        end
+        -- The whole header bar expands/collapses the card; it sits under the
+        -- header's own buttons and checkbox, so those still get their clicks.
+        card.header = CreateFrame("Button", nil, card)
+        card.header:SetPoint("TOPLEFT", 1, -1)
+        card.header:SetPoint("TOPRIGHT", -1, -1)
+        card.header:SetHeight(HEADER_H - 2)
+        card.header:SetFrameLevel(card:GetFrameLevel())
+        card.header:SetHighlightTexture(UI.WHITE)
+        card.header:GetHighlightTexture():SetVertexColor(1, 1, 1)
+        card.header:GetHighlightTexture():SetAlpha(0.05)
+        card.header:SetScript("OnClick", ToggleCollapsed)
+
         card.toggle = CreateFrame("Button", nil, card)
         card.toggle:SetSize(16, 16)
         card.toggle:SetPoint("TOPLEFT", 6, -6)
-        card.toggle:SetScript("OnClick", function()
-            if card.cond then card.cond.collapsed = not card.cond.collapsed end
-            Rebuild()
-        end)
+        card.toggle:SetScript("OnClick", ToggleCollapsed)
         card.enabled = UI.Check(card, "", function() return card.cond and card.cond.enabled end,
             function(v) if card.cond then card.cond.enabled = v; Changed() end end)
         card.enabled:SetPoint("TOPLEFT", 26, -2)
