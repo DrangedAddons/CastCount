@@ -846,6 +846,16 @@ function builders.conditions(p)
         card.header:GetHighlightTexture():SetVertexColor(1, 1, 1)
         card.header:GetHighlightTexture():SetAlpha(0.05)
         card.header:SetScript("OnClick", ToggleCollapsed)
+        -- A slightly lighter title bar, with a thin gold line under it while the
+        -- card is open, so it reads as the card's header rather than part of the body.
+        local headerBg = card.header:CreateTexture(nil, "BACKGROUND")
+        headerBg:SetAllPoints()
+        headerBg:SetColorTexture(0.16, 0.16, 0.18, 1)
+        card.headerLine = card.header:CreateTexture(nil, "BORDER")
+        card.headerLine:SetPoint("BOTTOMLEFT", 0, 0)
+        card.headerLine:SetPoint("BOTTOMRIGHT", 0, 0)
+        card.headerLine:SetHeight(1)
+        card.headerLine:SetColorTexture(1, 0.82, 0, 0.35)
 
         card.toggle = CreateFrame("Button", nil, card)
         card.toggle:SetSize(16, 16)
@@ -854,8 +864,8 @@ function builders.conditions(p)
         card.enabled = UI.Check(card, "", function() return card.cond and card.cond.enabled end,
             function(v) if card.cond then card.cond.enabled = v; Changed() end end)
         card.enabled:SetPoint("TOPLEFT", 26, -2)
-        card.title = UI.Text(card, "", "GameFontNormal")
-        card.title:SetPoint("TOPLEFT", 54, -8)
+        card.title = UI.Text(card.header, "", "GameFontNormal")
+        card.title:SetPoint("TOPLEFT", card, "TOPLEFT", 54, -8)
         card.title:SetWidth(390)
         card.title:SetWordWrap(false)
 
@@ -926,6 +936,7 @@ function builders.conditions(p)
             self.up:SetEnabled(index > 1)
             self.down:SetEnabled(index < #Conds())
             local open = not c.collapsed
+            self.headerLine:SetShown(open)
             for _, w in ipairs({ self.nameLabel, self.nameEdit, self.nameNote, self.logicNote, self.addCheck,
                 self.thenLabel, self.addProp, self.warn }) do
                 w:SetShown(open)

@@ -2,6 +2,7 @@
 
 ## 2.2.2
 - Conditions: click anywhere on a card's title bar (not just the + / -) to expand or collapse it.
+- The title bar has its own slightly lighter background, with a thin gold line under it while the card is open.
 
 ## 2.2.1
 - Looks renamed: **Default** (was Normal), **Low**, **Out of mana** and **Free** (was Free right now). The matching condition check is **Zero cost**: any spell that normally costs mana and costs nothing at the moment, whatever the reason.
