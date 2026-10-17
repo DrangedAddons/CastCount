@@ -99,6 +99,8 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
     s:SetScript("OnValueChanged", function(_, v)
         v = math.floor(v / step + 0.5) * step
         value:SetText(v)
+        -- The typed-value box follows the bar (unless you're typing in it).
+        if holder.box and not holder.box:HasFocus() then holder.box:SetText(v) end
         if not holder.updating then set(v) end
     end)
     s:EnableMouseWheel(true)
@@ -132,6 +134,7 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
         end)
         box:SetPoint("TOP", s, "BOTTOM", 0, -4)
         box:SetJustifyH("CENTER")
+        holder.box = box
     end
 
     function holder:Refresh()
@@ -139,6 +142,7 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
         local v = get()
         s:SetValue(v)
         value:SetText(v)
+        if self.box and not self.box:HasFocus() then self.box:SetText(v) end
         self.updating = false
     end
     return UI.Track(holder)
