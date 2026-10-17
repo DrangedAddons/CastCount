@@ -712,9 +712,8 @@ function builders.conditions(p)
         UI.RefreshAll()
     end
 
-    Note(content, "Each condition checks your casts left (and a few other things) and changes how the count "
-        .. "or button looks. They're applied top to bottom, so a lower condition wins when two change the same thing.",
-        0, 0, 600)
+    Note(content, "Each condition is resolved top to bottom; a lower condition will be prioritised when "
+        .. "deciding between similar actions.", 0, 0, 600)
 
     -- One check row: subject, operator, value.
     local function CheckRow(card, i)
