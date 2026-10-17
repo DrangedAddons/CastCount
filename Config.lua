@@ -376,6 +376,12 @@ function builders.text(p)
             UI.RefreshAll()
         end)
     freeText:SetPoint("LEFT", freeLabel, "RIGHT", 10, 0)
+    -- The box's own font (the chat font) has no infinity sign, so it types in the
+    -- Free look's font, which always can draw the Free text.
+    Refresher(function()
+        local look = CC.db.looks.free
+        freeText:SetFont(CC.LookFontPath(look, look.text), 16, "")
+    end)
     local freeNote = UI.Text(freeRow, "instead of the count", "GameFontHighlightSmall")
     freeNote:SetPoint("LEFT", freeText, "RIGHT", 8, 0)
     local when = Note(p, "", 0, -60, 440)
