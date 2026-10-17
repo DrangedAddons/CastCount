@@ -187,7 +187,7 @@ local modeActive, before, dialog
 local function Dialog()
     if dialog then return dialog end
     dialog = CreateFrame("Frame", "CastCountButtonMode", UIParent, "BackdropTemplate")
-    dialog:SetSize(540, 220)
+    dialog:SetSize(540, 244)
     dialog:SetPoint("TOP", UIParent, "TOP", 0, -120)
     dialog:SetFrameStrata("FULLSCREEN_DIALOG")
     UI.Backdrop(dialog, 0.05, 0.05, 0.06, 0.95, 0.4, 0.4, 0.42, 1)
@@ -208,17 +208,26 @@ local function Dialog()
     body:SetPoint("TOP", 0, -44)
     body:SetWidth(490)
     body:SetJustifyH("CENTER")
-    local cancelNote = UI.Text(dialog, "Canceling will undo your changes and leave CastCount Button Mode.")
+    local cancelNote = UI.Text(dialog, "Add All adds every action button on screen. "
+        .. "Canceling will undo your changes and leave CastCount Button Mode.")
     cancelNote:SetPoint("BOTTOM", 0, 50)
     cancelNote:SetWidth(490)
     cancelNote:SetJustifyH("CENTER")
 
-    local okay = UI.Button(dialog, OKAY or "Okay", 130, 24, function() CC.EndButtonMode(true, true) end)
-    okay:SetPoint("BOTTOMLEFT", 30, 16)
-    local clear = UI.Button(dialog, "Remove All", 130, 24, function() CC.ClearSelection() end)
-    clear:SetPoint("BOTTOM", 0, 16)
-    local cancel = UI.Button(dialog, CANCEL or "Cancel", 130, 24, function() CC.EndButtonMode(false, true) end)
-    cancel:SetPoint("BOTTOMRIGHT", -30, 16)
+    -- Okay | Add All | Remove All | Cancel, evenly spaced along the bottom.
+    local buttons = {
+        { OKAY or "Okay",  function() CC.EndButtonMode(true, true) end },
+        { "Add All",       function() CC.SelectAllVisible() end },
+        { "Remove All",    function() CC.ClearSelection() end },
+        { CANCEL or "Cancel", function() CC.EndButtonMode(false, true) end },
+    }
+    local bw, gap = 115, 13
+    local x = (540 - (#buttons * bw + (#buttons - 1) * gap)) / 2
+    for _, def in ipairs(buttons) do
+        local b = UI.Button(dialog, def[1], bw, 24, def[2])
+        b:SetPoint("BOTTOMLEFT", x, 16)
+        x = x + bw + gap
+    end
 
     -- Escape hides the popup: that counts as Cancel.
     dialog:SetScript("OnHide", function()

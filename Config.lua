@@ -51,39 +51,52 @@ end
 ---------------------------------------------------------
 --  SECTION: Buttons tab
 ---------------------------------------------------------
-StaticPopupDialogs["CASTCOUNT_CLEAR"] = {
-    text = "Remove CastCount from all of your buttons?",
-    button1 = YES, button2 = NO,
-    OnAccept = function() CC.ClearSelection() end,
-    timeout = 0, whileDead = true, hideOnEscape = true,
-}
 
 local builders = {}
 
 function builders.buttons(p)
-    Heading(p, "Choose which action buttons show a cast count", 0, 0)
-    local choose = UI.Button(p, "Choose buttons", 170, 26, function() CC.StartButtonMode() end)
-    choose:SetPoint("TOPLEFT", 0, -26)
-    local lines = {
-        "Choose buttons opens CastCount Button Mode. Perform the below actions on your action buttons:",
-        "    |cffffd100Click|r to add/remove CastCount on the action button",
-        "    |cffffd100Shift+Click|r to add/remove CastCount on the whole action bar",
-        "Already selected buttons are |cff33ff55green|r.",
-    }
-    local y = -66
-    for _, line in ipairs(lines) do
-        local fs = UI.Text(p, line)
-        fs:SetPoint("TOPLEFT", 0, y)
-        y = y - 20
+    local W = 652   -- page width
+
+    local function Centered(parent, text, font, y, width)
+        local fs = UI.Text(parent, text, font)
+        fs:SetPoint("TOP", parent, "TOP", 0, y)
+        fs:SetWidth(width or 560)
+        fs:SetJustifyH("CENTER")
+        return fs
     end
 
-    local addAll = UI.Button(p, "Add every button on screen", 210, 24, function() CC.SelectAllVisible() end)
-    addAll:SetPoint("TOPLEFT", 0, y - 16)
-    local clear = UI.Button(p, "Remove all", 120, 24, function() StaticPopup_Show("CASTCOUNT_CLEAR") end)
-    clear:SetPoint("LEFT", addAll, "RIGHT", 10, 0)
+    -- What CastCount does, at the top.
+    Centered(p, "Choose your buttons", "GameFontNormalLarge", -16)
+    Centered(p, "CastCount shows how many times you can cast a spell with your current mana, right on "
+        .. "your action buttons. Pick the buttons you want counts on; every other button stays as it is.",
+        "GameFontHighlight", -44, 540)
 
-    Note(p, "Works with Blizzard's action bars and EllesmereUI. Your selection is saved per character. "
-        .. "You can also type /cc buttons.", 0, -330)
+    -- How Button Mode works, in a panel in the middle.
+    local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
+    box:SetSize(520, 118)
+    box:SetPoint("TOP", 0, -100)
+    UI.Backdrop(box, 0.08, 0.08, 0.09, 0.9)
+    local lines = {
+        { "Choose buttons opens CastCount Button Mode. Then, on your action buttons:", 0 },
+        { "|cffffd100Click|r to add/remove CastCount on the action button", 16 },
+        { "|cffffd100Shift+Click|r to add/remove CastCount on the whole action bar", 16 },
+        { "Already selected buttons are |cff33ff55green|r.", 0 },
+    }
+    local y = -14
+    for _, line in ipairs(lines) do
+        local fs = UI.Text(box, line[1])
+        fs:SetPoint("TOPLEFT", 18 + line[2], y)
+        y = y - 24
+    end
+
+    -- The button itself, centred under its heading.
+    Centered(p, "Choose which action buttons show a cast count", "GameFontNormal", -250)
+    local choose = UI.Button(p, "Choose buttons", 190, 28, function() CC.StartButtonMode() end)
+    choose:SetPoint("TOP", 0, -274)
+
+    local foot = Centered(p, "Works with Blizzard's action bars and EllesmereUI. Your selection is saved per character. "
+        .. "You can also type /cc buttons.", "GameFontHighlightSmall", -372, W - 40)
+    foot:SetTextColor(0.75, 0.75, 0.75)
 end
 
 ---------------------------------------------------------
