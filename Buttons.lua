@@ -507,7 +507,7 @@ local function MakePlan(B, states)
     return plan
 end
 
--- Everything a button with this cost (nil = free right now) shows, across all mana levels.
+-- Everything a button with this cost (nil = zero cost right now) shows, across all mana levels.
 local function Plan(cost, max, ctx, sig)
     local key = table.concat({ cost or "free", max, ctx.combat and 1 or 0, ctx.hover and 1 or 0, sig }, ":")
     local plan = plans[key]

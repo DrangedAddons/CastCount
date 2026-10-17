@@ -250,7 +250,7 @@ local function PreviewSource()
     return "Interface\\Icons\\Spell_Frost_FrostBolt02", 45
 end
 
-local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Zero cost", fill = "ManaFill" }
+local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Free", fill = "ManaFill" }
 
 -- A clickable mock action button showing a count in one look.
 local function PreviewButton(parent, onClick)
@@ -612,7 +612,7 @@ end
 local SUBJECTS = {
     { value = "casts",  label = "Casts left" },
     { value = "mana",   label = "Mana %" },
-    { value = "free",   label = "Zero mana cost" },
+    { value = "free",   label = "Zero cost" },
     { value = "combat", label = "In combat" },
     { value = "hover",  label = "Mouse is over the button" },
 }
@@ -895,7 +895,7 @@ function builders.conditions(p)
             Rebuild()
         end)
         card.warn = UI.Text(card, "Sounds and chat messages only work when every check is one CastCount can see "
-            .. "(Zero mana cost, In combat, Mouse over): Forever hides your mana.", "GameFontHighlightSmall")
+            .. "(Zero cost, In combat, Mouse over): Forever hides your mana.", "GameFontHighlightSmall")
         card.warn:SetWidth(CARD_W - 90)
         card.warn:SetTextColor(1, 0.5, 0.3)
 
