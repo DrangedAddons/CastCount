@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.2.0
+- Appearance: **Apply to all** gives every other look the current look's font, size, outline, shadow and position; each keeps its own colour (and Free keeps its text). Asks first.
+- Copy Normal no longer wipes the Free look's text.
+
 ## 2.1.0
 - Minimap button (LibDBIcon, so minimap addons can collect it): click to open the settings, drag to move. Turn it off on the Visibility tab.
 - Addon icon for the DrangedAddons manager.

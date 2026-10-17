@@ -297,14 +297,49 @@ function builders.text(p)
     styleLabel:SetPoint("TOPLEFT", 0, -4)
     local which = UI.Dropdown(p, 160, LookItems, function() return editing end, Select)
     which:SetPoint("TOPLEFT", 44, 0)
-    local copy = UI.Button(p, "Copy from Normal", 140, 22, function()
-        local color = L().color
-        CC.db.looks[editing] = CC.CopyDeep(CC.db.looks.normal)
-        CC.db.looks[editing].color = color
+    -- Copies one look's style onto another, keeping the target's colour (and the
+    -- Free look's own text).
+    local function CopyLook(from, to)
+        local keep = CC.db.looks[to]
+        local look = CC.CopyDeep(CC.db.looks[from])
+        look.color, look.text = keep.color, keep.text
+        CC.db.looks[to] = look
+    end
+    local function Tip(button, title, text)
+        button:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:AddLine(title, 1, 1, 1)
+            GameTooltip:AddLine(text, nil, nil, nil, true)
+            GameTooltip:Show()
+        end)
+        button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    end
+
+    local copy = UI.Button(p, "Copy Normal", 100, 22, function()
+        CopyLook("normal", editing)
         StyleChanged()
         UI.RefreshAll()
     end)
     copy:SetPoint("LEFT", which, "RIGHT", 10, 0)
+    Tip(copy, "Copy Normal", "Gives this look the Normal look's font, size, outline, shadow and position. Its colour stays.")
+
+    StaticPopupDialogs["CASTCOUNT_APPLY_LOOK"] = {
+        text = "Apply the %s look's font, size, outline, shadow and position to every other look?\n\nColours stay as they are.",
+        button1 = YES, button2 = NO,
+        OnAccept = function(_, from)
+            for _, key in ipairs(CC.LOOKS) do
+                if key ~= from then CopyLook(from, key) end
+            end
+            StyleChanged()
+            UI.RefreshAll()
+        end,
+        timeout = 0, whileDead = true, hideOnEscape = true,
+    }
+    local applyAll = UI.Button(p, "Apply to all", 100, 22, function()
+        local dialog = StaticPopup_Show("CASTCOUNT_APPLY_LOOK", CC.LOOK_LABELS[editing])
+        if dialog then dialog.data = editing end
+    end)
+    Tip(applyAll, "Apply to all looks", "Gives every other look this look's font, size, outline, shadow and position. Each keeps its own colour.")
 
     -- When each look applies.
     local lowRow = CreateFrame("Frame", nil, p)
@@ -333,6 +368,9 @@ function builders.text(p)
         freeRow:SetShown(editing == "free")
         when:SetShown(editing == "normal" or editing == "oom" or editing == "fill")
         copy:SetShown(editing ~= "normal" and editing ~= "fill")
+        applyAll:SetShown(editing ~= "fill")
+        applyAll:ClearAllPoints()
+        applyAll:SetPoint("LEFT", copy:IsShown() and copy or which, "RIGHT", 6, 0)
         if editing == "normal" then
             when:SetText("Used when you have more casts left than the Low count look covers.")
         elseif editing == "fill" then
