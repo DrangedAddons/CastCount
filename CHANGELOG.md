@@ -1,7 +1,8 @@
 # Changelog
 
 ## 2.2.1
-- The "Free right now" look is now called **Zero cost**, and the condition check matches it: for any spell that normally costs mana and costs nothing at the moment, whatever the reason.
+- Looks renamed: **Default** (was Normal), **Low**, **Out of mana** and **Free** (was Free right now). The matching condition check is **Zero cost**: any spell that normally costs mana and costs nothing at the moment, whatever the reason.
+- The Appearance tab's title says what you're editing: "Edit look style : Default", "Edit ManaFill" and so on. Copy Normal is now Copy Default.
 
 ## 2.2.0
 - Appearance: **Apply to all** gives every other look the current look's font, size, outline, shadow and position; each keeps its own colour (and Free keeps its text). Asks first.

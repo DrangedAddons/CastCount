@@ -17,7 +17,7 @@ CC.Color = Color
 ---------------------------------------------------------
 --  SECTION: Defaults
 ---------------------------------------------------------
--- The looks a count can have, each a full text style. "Zero cost" (key "free") is for
+-- The looks a count can have, each a full text style. "Free" (key "free") is for
 -- a spell that normally costs mana but costs nothing right now, for any reason; it shows
 -- its own text (an infinity sign by default) instead of a number.
 local function Look(r, g, b, font)
@@ -27,7 +27,7 @@ local function Look(r, g, b, font)
     }
 end
 CC.LOOKS = { "normal", "low", "oom", "free" }
-CC.LOOK_LABELS = { normal = "Normal", low = "Low count", oom = "Out of mana", free = "Zero cost" }
+CC.LOOK_LABELS = { normal = "Default", low = "Low", oom = "Out of mana", free = "Free" }
 local freeLook = Look(0.4, 0.8, 1, "Arial Narrow")
 freeLook.text = "\226\136\158"   -- the infinity sign, UTF-8
 freeLook.size = 22
@@ -35,7 +35,7 @@ freeLook.size = 22
 -- Account-wide: how the numbers look, when they show, and the conditions.
 CC.DEFAULTS = {
     looks = { normal = Look(0, 1, 0), low = Look(1, 0.65, 0), oom = Look(1, 0.2, 0.2), free = freeLook },
-    lowAt = 3,   -- "Low count" look from 1 up to this many casts; 0 casts = "Out of mana"
+    lowAt = 3,   -- "Low" look from 1 up to this many casts; 0 casts = "Out of mana"
     show = {
         inCombat = true, outOfCombat = true, oocOnlyNotFull = false,
         onHover = true, macros = true,

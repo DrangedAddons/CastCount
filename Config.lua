@@ -250,7 +250,7 @@ local function PreviewSource()
     return "Interface\\Icons\\Spell_Frost_FrostBolt02", 45
 end
 
-local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Free", fill = "ManaFill" }
+local PREVIEW_LABELS = { normal = "Default", low = "Low", oom = "Out of mana", free = "Free", fill = "ManaFill" }
 
 -- A clickable mock action button showing a count in one look.
 local function PreviewButton(parent, onClick)
@@ -325,13 +325,13 @@ function builders.text(p)
         button:SetScript("OnLeave", function() GameTooltip:Hide() end)
     end
 
-    local copy = UI.Button(p, "Copy Normal", 100, 22, function()
+    local copy = UI.Button(p, "Copy Default", 100, 22, function()
         CopyLook("normal", editing)
         StyleChanged()
         UI.RefreshAll()
     end)
     copy:SetPoint("LEFT", which, "RIGHT", 10, 0)
-    Tip(copy, "Copy Normal", "Gives this look the Normal look's font, size, outline, shadow and position. Its colour stays.")
+    Tip(copy, "Copy Default", "Gives this look the Default look's font, size, outline, shadow and position. Its colour stays.")
 
     StaticPopupDialogs["CASTCOUNT_APPLY_LOOK"] = {
         text = "Apply the %s look's font, size, outline, shadow and position to every other look?\n\nColours stay as they are.",
@@ -383,13 +383,13 @@ function builders.text(p)
         lowRow:SetShown(editing == "low")
         freeRow:SetShown(editing == "free")
         when:SetShown(editing == "normal" or editing == "oom" or editing == "fill")
-        lookTitle:SetText(editing == "fill" and "ManaFill" or (CC.LOOK_LABELS[editing] .. " look"))
+        lookTitle:SetText(editing == "fill" and "Edit ManaFill" or ("Edit look style : " .. CC.LOOK_LABELS[editing]))
         copy:SetShown(editing ~= "normal" and editing ~= "fill")
         applyAll:SetShown(editing ~= "fill")
         applyAll:ClearAllPoints()
         applyAll:SetPoint("LEFT", copy:IsShown() and copy or which, "RIGHT", 6, 0)
         if editing == "normal" then
-            when:SetText("Used when you have more casts left than the Low count look covers.")
+            when:SetText("Used when you have more casts left than the Low look covers.")
         elseif editing == "fill" then
             when:SetText("While you can't afford a spell, its button fills from the bottom as your mana comes back.")
         else
@@ -501,7 +501,7 @@ function builders.text(p)
 
     Note(p, "While this tab is open every selected button shows its count, so you can see your changes.", 0, -394)
 
-    -- Preview, on the right: Normal big, Low count, Out of mana and Free smaller.
+    -- Preview, on the right: Default big, Low, Out of mana and Free smaller.
     -- Clicking one picks that look to edit.
     local box = CreateFrame("Frame", nil, p, "BackdropTemplate")
     box:SetSize(176, 340)
