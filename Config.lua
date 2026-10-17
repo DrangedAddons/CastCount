@@ -365,22 +365,16 @@ function builders.text(p)
     local freeRow = CreateFrame("Frame", nil, p)
     freeRow:SetSize(440, 22)
     freeRow:SetPoint("TOPLEFT", 0, -56)
-    local freeLabel = UI.Text(freeRow, "Show")
+    local freeLabel = UI.Text(freeRow, "Shows")
     freeLabel:SetPoint("LEFT", 0, 0)
-    local freeText = UI.Edit(freeRow, 70, false, function() return CC.db.looks.free.text end,
-        function(v)
-            local look = CC.db.looks.free
-            look.text = v
-            if not CC.FontCanDraw(CC.FontPath(look.font), v) then look.font = "Arial Narrow" end
-            StyleChanged()
-            UI.RefreshAll()
-        end)
-    freeText:SetPoint("LEFT", freeLabel, "RIGHT", 10, 0)
-    -- The box's own font (the chat font) has no infinity sign, so it types in the
-    -- Free look's font, which always can draw the Free text.
+    -- The infinity sign, drawn in the Free look's font (the UI font has no such character).
+    local freeText = freeRow:CreateFontString(nil, "ARTWORK")
+    freeText:SetPoint("LEFT", freeLabel, "RIGHT", 8, 0)
     Refresher(function()
         local look = CC.db.looks.free
-        freeText:SetFont(CC.LookFontPath(look, look.text), 16, "")
+        freeText:SetFont(CC.LookFontPath(look, look.text), 18, "")
+        freeText:SetText(look.text)
+        freeText:SetTextColor(1, 0.82, 0)
     end)
     local freeNote = UI.Text(freeRow, "instead of the count", "GameFontHighlightSmall")
     freeNote:SetPoint("LEFT", freeText, "RIGHT", 8, 0)
@@ -456,7 +450,6 @@ function builders.text(p)
     local y = UI.Slider(lp, "Y offset (down - / up +)", -50, 50, 1, 216, function() return L().y end,
         function(v) L().y = v; StyleChanged() end, true)
     y:SetPoint("TOPLEFT", 230, y0 - 218)
-    Note(lp, "Arrows nudge by 1, Shift-click by 5, Ctrl-click by 10.", 0, y0 - 256, 440)
 
     local reset = UI.Button(lp, "Reset all looks", 140, 22, function()
         CC.ResetSection("looks")

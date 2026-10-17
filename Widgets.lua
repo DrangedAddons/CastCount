@@ -69,10 +69,11 @@ end
 ---------------------------------------------------------
 --  SECTION: Slider
 ---------------------------------------------------------
--- With arrows, < and > buttons sit at the ends: a click moves 1 step, Shift 5, Ctrl 10.
+-- With arrows, < and > buttons sit at the ends (a click moves 1 step, Shift 5, Ctrl 10)
+-- and the value is a box centred under the bar that you can type into.
 function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
     local holder = CreateFrame("Frame", nil, parent)
-    holder:SetSize(width, 34)
+    holder:SetSize(width, arrows and 54 or 34)
     local title = UI.Text(holder, label, "GameFontNormalSmall")
     title:SetPoint("TOPLEFT")
     local value = UI.Text(holder, "", "GameFontHighlightSmall")
@@ -109,10 +110,28 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
             set(math.max(minV, math.min(maxV, get() + dir * n * step)))
             holder:Refresh()
         end
+        local function Tip(b)
+            b:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:AddLine("Click: 1   Shift-click: 5   Ctrl-click: 10", 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        end
         local left = UI.Button(holder, "<", 20, 18, function() Nudge(-1) end)
         left:SetPoint("TOPLEFT", 0, -13)
+        Tip(left)
         local right = UI.Button(holder, ">", 20, 18, function() Nudge(1) end)
         right:SetPoint("TOPRIGHT", 0, -13)
+        Tip(right)
+
+        value:Hide()
+        local box = UI.Edit(holder, 44, "signed", get, function(v)
+            set(math.max(minV, math.min(maxV, v)))
+            holder:Refresh()
+        end)
+        box:SetPoint("TOP", s, "BOTTOM", 0, -4)
+        box:SetJustifyH("CENTER")
     end
 
     function holder:Refresh()
@@ -482,8 +501,22 @@ function UI.Edit(parent, width, numeric, get, set)
         e:Refresh()
     end
     e:SetScript("OnEnterPressed", function(self) Save(); self:ClearFocus() end)
-    e:SetScript("OnEditFocusLost", Save)
-    e:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    e:SetScript("OnEditFocusLost", function(self)
+        if self.cancelled then
+            self.cancelled = nil
+            self:Refresh()
+        else
+            Save()
+        end
+    end)
+    -- Escape puts the old value back.
+    e:SetScript("OnEscapePressed", function(self) self.cancelled = true; self:ClearFocus() end)
+    -- Clicking in selects what's there, so typing replaces it (again a frame later,
+    -- since the click itself places the cursor after focus arrives).
+    e:SetScript("OnEditFocusGained", function(self)
+        self:HighlightText()
+        C_Timer.After(0, function() if self:HasFocus() then self:HighlightText() end end)
+    end)
     function e:Refresh()
         if not self:HasFocus() then self:SetText(tostring(get())) end
     end
