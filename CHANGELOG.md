@@ -3,6 +3,7 @@
 ## 2.2.0
 - Appearance: **Apply to all** gives every other look the current look's font, size, outline, shadow and position; each keeps its own colour (and Free keeps its text). Asks first.
 - Copy Normal no longer wipes the Free look's text.
+- The Free look only offers fonts that can draw its text (the infinity sign): CastCount tests each font. Copies and Apply to all leave Free on a font that can, and the buttons fall back to Arial Narrow if one still can't.
 - Appearance: a title names the look you're editing, the selected preview gets a gold frame, and **Reset this look** (next to Reset all looks) resets just that one.
 
 ## 2.1.0

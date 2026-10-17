@@ -311,6 +311,8 @@ function builders.text(p)
         local keep = CC.db.looks[to]
         local look = CC.CopyDeep(CC.db.looks[from])
         look.color, look.text = keep.color, keep.text
+        -- The Free look keeps its own font when the new one can't draw its text.
+        if keep.text and not CC.FontCanDraw(CC.FontPath(look.font), keep.text) then look.font = keep.font end
         CC.db.looks[to] = look
     end
     local function Tip(button, title, text)
@@ -366,7 +368,13 @@ function builders.text(p)
     local freeLabel = UI.Text(freeRow, "Show")
     freeLabel:SetPoint("LEFT", 0, 0)
     local freeText = UI.Edit(freeRow, 70, false, function() return CC.db.looks.free.text end,
-        function(v) CC.db.looks.free.text = v; StyleChanged() end)
+        function(v)
+            local look = CC.db.looks.free
+            look.text = v
+            if not CC.FontCanDraw(CC.FontPath(look.font), v) then look.font = "Arial Narrow" end
+            StyleChanged()
+            UI.RefreshAll()
+        end)
     freeText:SetPoint("LEFT", freeLabel, "RIGHT", 10, 0)
     local freeNote = UI.Text(freeRow, "when a mana spell is free right now (Clearcasting...)", "GameFontHighlightSmall")
     freeNote:SetPoint("LEFT", freeText, "RIGHT", 8, 0)
@@ -395,10 +403,18 @@ function builders.text(p)
     Heading(lp, "Font", 0, y0)
     local font = UI.Dropdown(lp, 220, function()
         local items = {}
-        for _, f in ipairs(CC.Fonts()) do items[#items + 1] = { value = f.name, label = f.name, font = f.path } end
+        -- The Free look only lists fonts that can draw its text (the infinity sign).
+        local text = (editing == "free") and CC.db.looks.free.text or nil
+        for _, f in ipairs(CC.Fonts()) do
+            if not text or CC.FontCanDraw(f.path, text) then
+                items[#items + 1] = { value = f.name, label = f.name, font = f.path }
+            end
+        end
         return items
     end, function() return L().font end, function(v) L().font = v; StyleChanged() end)
     font:SetPoint("TOPLEFT", 0, y0 - 20)
+    local fontNote = Note(lp, "Only fonts that can draw the Free text are listed.", 40, y0 - 2, 300)
+    Refresher(function() fontNote:SetShown(editing == "free") end)
 
     local outline = UI.Dropdown(lp, 120, function()
         return {
@@ -531,7 +547,7 @@ function builders.text(p)
             b:ClearAllPoints()
             b:SetPoint("TOP", box, "TOPLEFT", lay.x / lay.scale, -(lay.y or row2) / lay.scale)
             b.icon:SetTexture(icon)
-            CC.StyleFont(b.fs, look, b.holder)
+            CC.StyleFont(b.fs, look, b.holder, CC.LookFontPath(look, key == "free" and counts.free or nil))
             b.fs:SetText(key == "fill" and "" or counts[key])
             b.fs:SetTextColor(look.color.r, look.color.g, look.color.b, look.color.a or 1)
             CC.StyleFill(b.fill)

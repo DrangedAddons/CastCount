@@ -166,7 +166,8 @@ local function Layer(h, key, spec, inUse)
     end
     if f.styled ~= styleVersion then
         local look = CC.db.looks[spec.look]
-        CC.StyleFont(f.fs, look, f, nil, spec.size, spec.dx, spec.dy)
+        local text = spec.text or (spec.look == "free" and look.text) or nil
+        CC.StyleFont(f.fs, look, f, CC.LookFontPath(look, text), spec.size, spec.dx, spec.dy)
         f.styled = styleVersion
     end
     return f

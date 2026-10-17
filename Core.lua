@@ -188,6 +188,41 @@ function CC.FontPath(name)
     return CC.DEFAULT_FONT
 end
 
+-- Can this font draw this text? A character a font doesn't have comes out as nothing,
+-- or as the same "missing" box every unknown character gets, so the text is measured
+-- against a private-use character (U+E000) that no font draws. Plain ASCII always works.
+CC.SAFE_FONT = "Fonts\\ARIALN.TTF"   -- has the infinity sign
+local probe
+local drawable = {}
+local MISSING = "\238\128\128"
+function CC.FontCanDraw(path, text)
+    if not text or text == "" or not text:find("[\128-\255]") then return true end
+    local key = path .. "|" .. text
+    if drawable[key] then return true end
+    if not probe then
+        probe = UIParent:CreateFontString(nil, "OVERLAY")
+        probe:Hide()
+    end
+    probe:SetFont(path, 20, "")
+    if not probe:GetFont() then return false end
+    probe:SetText(text)
+    local width = probe:GetStringWidth() or 0
+    local chars = select(2, text:gsub("[^\128-\191]", ""))
+    probe:SetText(MISSING:rep(chars))
+    local missing = probe:GetStringWidth() or 0
+    local ok = width > 0.5 and math.abs(width - missing) > 0.5
+    if ok then drawable[key] = true end
+    return ok
+end
+
+-- The font file for a look showing text; falls back to Arial Narrow when the
+-- look's font can't draw it (the Free look's infinity sign).
+function CC.LookFontPath(look, text)
+    local path = CC.FontPath(look.font)
+    if text and not CC.FontCanDraw(path, text) then return CC.SAFE_FONT end
+    return path
+end
+
 ---------------------------------------------------------
 --  SECTION: Events
 ---------------------------------------------------------
