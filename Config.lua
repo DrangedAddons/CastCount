@@ -250,7 +250,7 @@ local function PreviewSource()
     return "Interface\\Icons\\Spell_Frost_FrostBolt02", 45
 end
 
-local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Free", fill = "ManaFill" }
+local PREVIEW_LABELS = { normal = "Normal", low = "Low", oom = "Out of mana", free = "Zero cost", fill = "ManaFill" }
 
 -- A clickable mock action button showing a count in one look.
 local function PreviewButton(parent, onClick)
@@ -376,7 +376,7 @@ function builders.text(p)
             UI.RefreshAll()
         end)
     freeText:SetPoint("LEFT", freeLabel, "RIGHT", 10, 0)
-    local freeNote = UI.Text(freeRow, "when a mana spell is free right now (Clearcasting...)", "GameFontHighlightSmall")
+    local freeNote = UI.Text(freeRow, "instead of the count", "GameFontHighlightSmall")
     freeNote:SetPoint("LEFT", freeText, "RIGHT", 8, 0)
     local when = Note(p, "", 0, -60, 440)
     Refresher(function()
@@ -413,7 +413,7 @@ function builders.text(p)
         return items
     end, function() return L().font end, function(v) L().font = v; StyleChanged() end)
     font:SetPoint("TOPLEFT", 0, y0 - 20)
-    local fontNote = Note(lp, "Only fonts that can draw the Free text are listed.", 40, y0 - 2, 300)
+    local fontNote = Note(lp, "Only fonts that can draw this text are listed.", 40, y0 - 2, 300)
     Refresher(function() fontNote:SetShown(editing == "free") end)
 
     local outline = UI.Dropdown(lp, 120, function()
@@ -612,7 +612,7 @@ end
 local SUBJECTS = {
     { value = "casts",  label = "Casts left" },
     { value = "mana",   label = "Mana %" },
-    { value = "free",   label = "Spell is free right now" },
+    { value = "free",   label = "Zero mana cost" },
     { value = "combat", label = "In combat" },
     { value = "hover",  label = "Mouse is over the button" },
 }
@@ -895,7 +895,7 @@ function builders.conditions(p)
             Rebuild()
         end)
         card.warn = UI.Text(card, "Sounds and chat messages only work when every check is one CastCount can see "
-            .. "(Spell is free, In combat, Mouse over): Forever hides your mana.", "GameFontHighlightSmall")
+            .. "(Zero mana cost, In combat, Mouse over): Forever hides your mana.", "GameFontHighlightSmall")
         card.warn:SetWidth(CARD_W - 90)
         card.warn:SetTextColor(1, 0.5, 0.3)
 

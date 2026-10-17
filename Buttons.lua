@@ -635,7 +635,7 @@ local function UpdateFill(h, cost, max, mana)
     end
 end
 
--- Spells seen costing mana this session: free from then on means "free right now".
+-- Spells seen costing mana this session: a 0 cost from then on means "Zero cost".
 CC.everMana = CC.everMana or {}
 
 -- condNow collects the conditions (for sounds and chat) that hold on some selected button.
@@ -770,7 +770,7 @@ end
 function CC.MarkDirty() CC.dirty = true end
 
 -- Events only mark things dirty; one refresh runs at most every 0.05s, plus a
--- safety refresh every second (buffs like Clearcasting change costs silently).
+-- safety refresh every second (buffs that change costs fire no cost event).
 local driver = CreateFrame("Frame")
 local sinceRefresh = 0
 driver:SetScript("OnUpdate", function(_, elapsed)
