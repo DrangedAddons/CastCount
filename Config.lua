@@ -713,7 +713,7 @@ function builders.conditions(p)
     end
 
     Note(content, "Each condition is resolved top to bottom; a lower condition will be prioritised when "
-        .. "deciding between similar actions.", 0, 0, 600)
+        .. "deciding between conditions.", 0, 0, 600)
 
     -- One check row: subject, operator, value.
     local function CheckRow(card, i)
