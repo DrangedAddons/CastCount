@@ -83,7 +83,7 @@ function builders.buttons(p)
     clear:SetPoint("LEFT", addAll, "RIGHT", 10, 0)
 
     Note(p, "Works with Blizzard's action bars and EllesmereUI. Your selection is saved per character. "
-        .. "You can also type /cc buttons. Combat closes Button Mode and keeps your changes.", 0, -330)
+        .. "You can also type /cc buttons.", 0, -330)
 end
 
 ---------------------------------------------------------
