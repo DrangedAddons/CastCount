@@ -243,10 +243,35 @@ local function FillBar(h)
     return f
 end
 
+-- Holders fading out: holder -> { start = GetTime(), duration }. A shared OnUpdate
+-- lowers each one's alpha from 1 to 0 over its duration, then hides it.
+local fading = {}
+local fadeDriver = CreateFrame("Frame")
+fadeDriver:Hide()
+fadeDriver:SetScript("OnUpdate", function(self)
+    local now, any = GetTime(), false
+    for h, f in pairs(fading) do
+        local a = 1 - (now - f.start) / f.duration
+        if a <= 0 then
+            fading[h] = nil
+            h:Hide()
+            h:SetAlpha(1)
+        else
+            h:SetAlpha(a)
+            any = true
+        end
+    end
+    if not any then self:Hide() end
+end)
+
+local function StopFade(h)
+    fading[h] = nil
+end
+
 local function HideHolder(btn)
     local h = holders[btn]
     if not h then return end
-    if h.fader then h.fader:Stop() end
+    StopFade(h)
     h:Hide()
 end
 
@@ -257,18 +282,10 @@ local function FadeHolder(btn)
     if not h or not h:IsShown() then return end
     local s = CC.db.show
     if not s.fadeOut or CC.preview then return HideHolder(btn) end
-    if h.fader and h.fader:IsPlaying() then return end
-    if not h.fader then
-        local ag = h:CreateAnimationGroup()
-        local a = ag:CreateAnimation("Alpha")
-        a:SetFromAlpha(1)
-        a:SetToAlpha(0)
-        ag.alpha = a
-        ag:SetScript("OnFinished", function() h:Hide() end)
-        h.fader = ag
-    end
-    h.fader.alpha:SetDuration(math.max(0.05, tonumber(s.fadeTime) or 0.5))
-    h.fader:Play()
+    if fading[h] then return end
+    fading[h] = { start = GetTime(), duration = math.max(0.05, tonumber(s.fadeTime) or 0.5) }
+    h:SetAlpha(1)
+    fadeDriver:Show()
 end
 
 ---------------------------------------------------------
@@ -685,7 +702,7 @@ function CC.UpdateButton(btn, mana, max, sig, condNow)
     if not vis then return FadeHolder(btn) end
 
     local h = Holder(btn)
-    if h.fader and h.fader:IsPlaying() then h.fader:Stop() end
+    StopFade(h)
     if mana then
         ApplyPlan(h, MakePlan({ 0 }, { StateAt(k, pct, ctx) }), k and tostring(k))
     elseif HAS_CURVES then
