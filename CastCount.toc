@@ -2,7 +2,7 @@
 ## Title: CastCount
 ## Notes: Cast counts on the action buttons you choose: four styled looks, ManaFill as mana returns, and WeakAuras-style conditions (glow, pulse, recolour, sounds). EllesmereUI and Blizzard bars.
 ## Author: Dranged
-## Version: 2.4.0
+## Version: 2.4.1
 ## OptionalDeps: EllesmereUI, EllesmereUIActionBars
 ## X-DrangedAddons-Games: _classic_beta_, _forever_
 ## SavedVariables: CastCountDB

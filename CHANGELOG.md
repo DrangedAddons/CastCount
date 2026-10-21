@@ -1,5 +1,8 @@
 # Changelog
 
+## 2.4.1
+- Re-release of 2.4.0 with no changes.
+
 ## 2.4.0
 - **Fade count on hide** (Visibility tab, on by default): when a count is hidden by your visibility settings (leaving or entering combat, moving the mouse off a button, reaching full mana with "Only when my mana isn't full") it fades away over the time you set (0.1 to 3 seconds) instead of vanishing. Counts still appear instantly.
 
