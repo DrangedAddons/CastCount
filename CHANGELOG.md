@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.4.2
+- Visibility settings renamed and reordered: Show in combat, Show out of combat, **Show on mouse over**, **Hide on full mana**, then Fade count on hide.
+- Hide on full mana (was "Only when my mana isn't full", nested under Show out of combat) now applies in and out of combat. Show on mouse over still overrides it.
+
 ## 2.4.1
 - Re-release of 2.4.0 with no changes.
 

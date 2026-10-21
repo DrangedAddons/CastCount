@@ -104,7 +104,7 @@ function CC.StyleFont(fs, look, anchorTo, fontPath, size, dx, dy)
 end
 
 -- The text sits in "copies": copy 1 is the live one; copies 2+ are only used to
--- fade out the count when "only when my mana isn't full" hides it (see History).
+-- fade out the count when "Hide on full mana" hides it (see History).
 -- Each copy is a gate frame (show/hide) holding a fade frame holding the text layers.
 local function NewCopy(h)
     local gate = CreateFrame("Frame", nil, h)
@@ -455,7 +455,7 @@ local function CountCurve(cost, max)
     return c
 end
 
--- Alpha 1 below full mana, 0 at full (for "only when my mana isn't full").
+-- Alpha 1 below full mana, 0 at full (for "Hide on full mana").
 -- ManaFill alpha: 1 while mana is below one cast's worth, 0 from then on.
 local fillCurves = {}
 local function FillCurve(cost, max)
@@ -660,7 +660,7 @@ end
 ---------------------------------------------------------
 --  SECTION: History copies (fading out at full mana)
 ---------------------------------------------------------
--- "Only when my mana isn't full" is decided by the game: each refresh CastCount hands
+-- "Hide on full mana" is decided by the game: each refresh CastCount hands
 -- it the alpha curve and passes the sealed answer (1 = show, 0 = hide) to the count,
 -- without ever seeing it. So CastCount can't start a timer when it flips. Instead,
 -- with Fade count on hide ticked, it keeps history copies of the count: every
@@ -731,8 +731,9 @@ local function Visibility(btn, mana, max)
     if CC.preview then return true end
     local s = CC.db.show
     if s.onHover and hovered[btn] then return true end
-    if CC.inCombat then return s.inCombat end
-    if not s.outOfCombat then return false end
+    if CC.inCombat and not s.inCombat then return false end
+    if not CC.inCombat and not s.outOfCombat then return false end
+    -- Hide on full mana (saved as oocOnlyNotFull), in and out of combat.
     if not s.oocOnlyNotFull then return true end
     if mana then return mana < max end
     return HAS_CURVES and "notfull" or true

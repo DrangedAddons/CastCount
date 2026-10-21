@@ -8,7 +8,7 @@ A World of Warcraft addon for WoW Forever (and the Classic beta) that shows how 
 - **Four looks:** Default, Low (you set the threshold), Out of mana and Free (an infinity sign when a spell that normally costs mana costs nothing). Each has its own font (LibSharedMedia fonts too), size, outline, shadow, colour, position and X/Y offset, with clickable previews.
 - **ManaFill:** when you can't afford a spell, its button fills from the bottom up as your mana returns, so you can see how close the next cast is. Colour, transparency and texture are up to you.
 - **Conditions:** as many as you like. **If** casts left, mana %, the spell being zero cost, being in combat or hovering the button, joined with and/or. **Then** change the count's colour, transparency, size, position or text, hide or pulse it, glow the button (action button, pixel, autocast, proc or simple border), tint it, play a sound or print a chat message.
-- **Visibility:** in combat, out of combat (optionally only when your mana isn't full), and on mouse-over. Counts can fade away when they hide (you pick how fast) and always appear instantly.
+- **Visibility:** show in combat, out of combat and on mouse over; hide on full mana. Counts can fade away when they hide (you pick how fast) and always appear instantly.
 - **Blacklist:** spells that should never show a count, picked from your spellbook and bars.
 - Your buttons and blacklist are saved per character; looks, conditions and visibility are account-wide.
 

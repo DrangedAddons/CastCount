@@ -594,9 +594,8 @@ function builders.visibility(p)
     Heading(p, "When to show the counts", 0, 0)
     Check("Show in combat", "inCombat", 0, -22)
     Check("Show out of combat", "outOfCombat", 0, -50)
-    local notFull = Check("Only when my mana isn't full", "oocOnlyNotFull", 26, -76)
-    Check("Show while the mouse is over the button (even when the options above hide it)", "onHover", 0, -108)
-    Refresher(function() notFull:SetActive(S().outOfCombat) end)
+    Check("Show on mouse over", "onHover", 0, -78)
+    Check("Hide on full mana", "oocOnlyNotFull", 0, -106)
 
     -- Fade on hide: counts fade away when hidden; they still appear instantly.
     Check("Fade count on hide", "fadeOut", 0, -140)
