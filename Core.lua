@@ -39,6 +39,7 @@ CC.DEFAULTS = {
     show = {
         inCombat = true, outOfCombat = true, oocOnlyNotFull = false,
         onHover = true, macros = true,
+        fadeOut = true, fadeTime = 0.5,   -- fade counts away when they hide (showing stays instant)
     },
     -- Each: { enabled, collapsed, name (optional),
     --   checks = { { join = and|or (2nd check on), subject = casts|mana|free|combat|hover,

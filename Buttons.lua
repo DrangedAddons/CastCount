@@ -245,7 +245,30 @@ end
 
 local function HideHolder(btn)
     local h = holders[btn]
-    if h then h:Hide() end
+    if not h then return end
+    if h.fader then h.fader:Stop() end
+    h:Hide()
+end
+
+-- Fade on hide: when a count is hidden by the visibility settings it fades away
+-- instead of vanishing. Showing is always instant (UpdateButton stops the fade).
+local function FadeHolder(btn)
+    local h = holders[btn]
+    if not h or not h:IsShown() then return end
+    local s = CC.db.show
+    if not s.fadeOut or CC.preview then return HideHolder(btn) end
+    if h.fader and h.fader:IsPlaying() then return end
+    if not h.fader then
+        local ag = h:CreateAnimationGroup()
+        local a = ag:CreateAnimation("Alpha")
+        a:SetFromAlpha(1)
+        a:SetToAlpha(0)
+        ag.alpha = a
+        ag:SetScript("OnFinished", function() h:Hide() end)
+        h.fader = ag
+    end
+    h.fader.alpha:SetDuration(math.max(0.05, tonumber(s.fadeTime) or 0.5))
+    h.fader:Play()
 end
 
 ---------------------------------------------------------
@@ -659,9 +682,10 @@ function CC.UpdateButton(btn, mana, max, sig, condNow)
     end
 
     local vis = Visibility(btn, mana, max)
-    if not vis then return HideHolder(btn) end
+    if not vis then return FadeHolder(btn) end
 
     local h = Holder(btn)
+    if h.fader and h.fader:IsPlaying() then h.fader:Stop() end
     if mana then
         ApplyPlan(h, MakePlan({ 0 }, { StateAt(k, pct, ctx) }), k and tostring(k))
     elseif HAS_CURVES then

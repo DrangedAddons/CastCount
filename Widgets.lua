@@ -96,9 +96,11 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
     if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
     holder.updating = false
 
+    -- Whole steps show as whole numbers; fractional steps with one decimal.
+    local function Fmt(v) return (step < 1) and ("%.1f"):format(v) or v end
     s:SetScript("OnValueChanged", function(_, v)
         v = math.floor(v / step + 0.5) * step
-        value:SetText(v)
+        value:SetText(Fmt(v))
         -- The typed-value box follows the bar (unless you're typing in it).
         if holder.box and not holder.box:HasFocus() then holder.box:SetText(v) end
         if not holder.updating then set(v) end
@@ -141,7 +143,7 @@ function UI.Slider(parent, label, minV, maxV, step, width, get, set, arrows)
         self.updating = true
         local v = get()
         s:SetValue(v)
-        value:SetText(v)
+        value:SetText(Fmt(v))
         if self.box and not self.box:HasFocus() then self.box:SetText(v) end
         self.updating = false
     end
