@@ -103,13 +103,32 @@ function CC.StyleFont(fs, look, anchorTo, fontPath, size, dx, dy)
     fs:SetPoint(look.anchor, anchorTo, look.anchor, look.x + (dx or 0), look.y + (dy or 0))
 end
 
+-- The text sits in "copies": copy 1 is the live one; copies 2+ are only used to
+-- fade out the count when "only when my mana isn't full" hides it (see History).
+-- Each copy is a gate frame (show/hide) holding a fade frame holding the text layers.
+local function NewCopy(h)
+    local gate = CreateFrame("Frame", nil, h)
+    gate:SetAllPoints(h)
+    gate:SetFrameLevel(h:GetFrameLevel() + 5)
+    local fade = CreateFrame("Frame", nil, gate)
+    fade:SetAllPoints(gate)
+    local copy = { gate = gate, fade = fade, layers = {} }
+    h.copies[#h.copies + 1] = copy
+    return copy
+end
+
 local function Holder(btn)
     local h = holders[btn]
     if not h then
         h = CreateFrame("Frame", nil, btn)
         h:SetAllPoints(btn)
-        h.layers, h.glows = {}, {}
-        h.tint = h:CreateTexture(nil, "ARTWORK")
+        h.glows, h.copies = {}, {}
+        -- Glows, tint and ManaFill live in their own frame, below the text.
+        h.extras = CreateFrame("Frame", nil, h)
+        h.extras:SetAllPoints(h)
+        h.extras:SetFrameLevel(h:GetFrameLevel() + 1)
+        NewCopy(h)
+        h.tint = h.extras:CreateTexture(nil, "ARTWORK")
         h.tint:SetPoint("TOPLEFT", 2, -2)
         h.tint:SetPoint("BOTTOMRIGHT", -2, 2)
         h.tint:SetColorTexture(1, 1, 1, 1)
@@ -124,10 +143,10 @@ local function Holder(btn)
     return h
 end
 
-local function NewLayer(h, pulse)
-    local f = CreateFrame("Frame", nil, h)
-    f:SetAllPoints(h)
-    f:SetFrameLevel(h:GetFrameLevel() + 5)
+local function NewLayer(parent, pulse)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetAllPoints(parent)
+    f:SetFrameLevel(parent:GetFrameLevel() + 1)
     f.fs = f:CreateFontString(nil, "OVERLAY")
     f.pulse = pulse
     if pulse then
@@ -150,18 +169,18 @@ local function NewLayer(h, pulse)
     return f
 end
 
--- The text layer for variant key (reusing an idle layer when one fits).
-local function Layer(h, key, spec, inUse)
-    local f = h.layers[key]
+-- The text layer for variant key in one copy (reusing an idle layer when one fits).
+local function Layer(copy, key, spec, inUse)
+    local f = copy.layers[key]
     if not f then
-        for k, other in pairs(h.layers) do
+        for k, other in pairs(copy.layers) do
             if not inUse[k] and other.pulse == spec.pulse then
-                h.layers[k], f = nil, other
+                copy.layers[k], f = nil, other
                 break
             end
         end
-        f = f or NewLayer(h, spec.pulse)
-        h.layers[key] = f
+        f = f or NewLayer(copy.fade, spec.pulse)
+        copy.layers[key] = f
         f.styled = nil
     end
     if f.styled ~= styleVersion then
@@ -186,9 +205,9 @@ CC.GLOW_TYPES = GLOW_TYPES
 local function GlowGate(h, key, glowType, c)
     local g = h.glows[key]
     if g then return g end
-    g = CreateFrame("Frame", nil, h)
+    g = CreateFrame("Frame", nil, h.extras)
     g:SetAllPoints(h)
-    g:SetFrameLevel(h:GetFrameLevel() + 2)
+    g:SetFrameLevel(h.extras:GetFrameLevel() + 2)
     local color = { c.r, c.g, c.b, c.a or 1 }
     if LCG and glowType == "pixel" then
         LCG.PixelGlow_Start(g, color, 8, 0.25, nil, 2, 0, 0, false, "cc")
@@ -228,11 +247,11 @@ end
 local function FillBar(h)
     local f = h.fill
     if not f then
-        f = CreateFrame("StatusBar", nil, h)
-        f:SetPoint("TOPLEFT", 2, -2)
-        f:SetPoint("BOTTOMRIGHT", -2, 2)
+        f = CreateFrame("StatusBar", nil, h.extras)
+        f:SetPoint("TOPLEFT", h, "TOPLEFT", 2, -2)
+        f:SetPoint("BOTTOMRIGHT", h, "BOTTOMRIGHT", -2, 2)
         f:SetOrientation("VERTICAL")
-        f:SetFrameLevel(h:GetFrameLevel() + 1)
+        f:SetFrameLevel(h.extras:GetFrameLevel() + 1)
         f:SetAlpha(0)
         h.fill = f
     end
@@ -268,10 +287,13 @@ local function StopFade(h)
     fading[h] = nil
 end
 
+local StopHistory   -- defined with the history copies below (it needs the curves)
+
 local function HideHolder(btn)
     local h = holders[btn]
     if not h then return end
     StopFade(h)
+    StopHistory(h)
     h:Hide()
 end
 
@@ -283,6 +305,7 @@ local function FadeHolder(btn)
     local s = CC.db.show
     if not s.fadeOut or CC.preview then return HideHolder(btn) end
     if fading[h] then return end
+    StopHistory(h, true)   -- keep whatever the copies show now, then fade the lot
     fading[h] = { start = GetTime(), duration = math.max(0.05, tonumber(s.fadeTime) or 0.5) }
     h:SetAlpha(1)
     fadeDriver:Show()
@@ -610,16 +633,20 @@ end
 local function ApplyPlan(h, plan, countText)
     local inUse = {}
     for key in pairs(plan.variants) do inUse[key] = true end
-    for key, v in pairs(plan.variants) do
-        local f = Layer(h, key, v.spec, inUse)
-        local text = v.spec.text
-        if v.spec.look == "free" and not text then text = CC.db.looks.free.text end
-        f.fs:SetText(text or countText or "")
-        SetAlphaFrom(f, v.alpha)
-        f.fs:SetTextColor(ColorFrom(v.color))
-    end
-    for key, f in pairs(h.layers) do
-        if not inUse[key] then f:SetAlpha(0) end
+    for ci, copy in ipairs(h.copies) do
+        if ci == 1 or copy.gate:IsShown() then
+            for key, v in pairs(plan.variants) do
+                local f = Layer(copy, key, v.spec, inUse)
+                local text = v.spec.text
+                if v.spec.look == "free" and not text then text = CC.db.looks.free.text end
+                f.fs:SetText(text or countText or "")
+                SetAlphaFrom(f, v.alpha)
+                f.fs:SetTextColor(ColorFrom(v.color))
+            end
+            for key, f in pairs(copy.layers) do
+                if not inUse[key] then f:SetAlpha(0) end
+            end
+        end
     end
     for key, gl in pairs(plan.glows) do
         SetAlphaFrom(GlowGate(h, key, gl.glowType, gl.color), gl.alpha)
@@ -628,6 +655,70 @@ local function ApplyPlan(h, plan, countText)
         if not plan.glows[key] then g:SetAlpha(0) end
     end
     h.tint:SetVertexColor(ColorFrom(plan.tint))
+end
+
+---------------------------------------------------------
+--  SECTION: History copies (fading out at full mana)
+---------------------------------------------------------
+-- "Only when my mana isn't full" is decided by the game: each refresh CastCount hands
+-- it the alpha curve and passes the sealed answer (1 = show, 0 = hide) to the count,
+-- without ever seeing it. So CastCount can't start a timer when it flips. Instead,
+-- with Fade count on hide ticked, it keeps history copies of the count: every
+-- fade-time / HISTORY seconds the oldest copy is stamped with the current sealed
+-- answer, and each copy fades out by its age over the fade time. The live copy (1)
+-- shows the answer instantly, so counts still appear at once; when mana hits full the
+-- copies stamped "show" just before it fade out over the chosen time.
+local HISTORY = 10
+local history = {}   -- holder -> { next = index of the copy to stamp next, last = time of the last stamp }
+
+local function FadeTime() return math.max(0.05, tonumber(CC.db.show.fadeTime) or 0.5) end
+
+local historyDriver = CreateFrame("Frame")
+historyDriver:Hide()
+historyDriver:SetScript("OnUpdate", function(self)
+    local now, any = GetTime(), false
+    local duration = FadeTime()
+    for h, st in pairs(history) do
+        any = true
+        if now - st.last >= duration / HISTORY then
+            st.last = now
+            local copy = h.copies[st.next]
+            local a = Evaluate(AlphaCurve())
+            copy.gate:SetAlpha(a == nil and 0 or a)
+            copy.born = now
+            st.next = (st.next >= HISTORY + 1) and 2 or (st.next + 1)
+        end
+        for i = 2, #h.copies do
+            local copy = h.copies[i]
+            copy.fade:SetAlpha(math.max(0, 1 - (now - (copy.born or 0)) / duration))
+        end
+    end
+    if not any then self:Hide() end
+end)
+
+local function StartHistory(h)
+    if history[h] then return end
+    while #h.copies < HISTORY + 1 do NewCopy(h) end
+    local now = GetTime()
+    for i = 2, #h.copies do
+        local copy = h.copies[i]
+        local a = Evaluate(AlphaCurve())
+        copy.gate:SetAlpha(a == nil and 0 or a)
+        copy.born = now - (i - 2) * FadeTime() / HISTORY
+        copy.gate:Show()
+    end
+    history[h] = { next = 2, last = now }
+    historyDriver:Show()
+end
+
+-- keep: leave what the copies show as it is (a full fade of the holder follows).
+StopHistory = function(h, keep)
+    if not h.copies then return end
+    history[h] = nil
+    if keep then return end
+    h.copies[1].gate:SetAlpha(1)
+    h.extras:SetAlpha(1)
+    for i = 2, #h.copies do h.copies[i].gate:Hide() end
 end
 
 ---------------------------------------------------------
@@ -703,6 +794,8 @@ function CC.UpdateButton(btn, mana, max, sig, condNow)
 
     local h = Holder(btn)
     StopFade(h)
+    local useHistory = vis == "notfull" and CC.db.show.fadeOut and HAS_CURVES and true or false
+    if useHistory then StartHistory(h) else StopHistory(h) end
     if mana then
         ApplyPlan(h, MakePlan({ 0 }, { StateAt(k, pct, ctx) }), k and tostring(k))
     elseif HAS_CURVES then
@@ -721,7 +814,16 @@ function CC.UpdateButton(btn, mana, max, sig, condNow)
 
     if vis == "notfull" then
         local a = Evaluate(AlphaCurve())
-        h:SetAlpha(a == nil and 1 or a)
+        if a == nil then a = 1 end
+        if useHistory then
+            -- The live copy and the glows/fill follow the sealed answer instantly;
+            -- the history copies provide the fade.
+            h:SetAlpha(1)
+            h.copies[1].gate:SetAlpha(a)
+            h.extras:SetAlpha(a)
+        else
+            h:SetAlpha(a)
+        end
     else
         h:SetAlpha(1)
     end
