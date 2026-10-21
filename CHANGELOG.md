@@ -1,7 +1,7 @@
 # Changelog
 
 ## 2.4.0
-- **Fade on hide** (Visibility tab, on by default): when a count is hidden by your visibility settings (leaving or entering combat, moving the mouse off a button) it fades away instead of vanishing. A slider sets the fade time (0.1 to 3 seconds). Counts still appear instantly. "Only when my mana isn't full" can't fade, since Forever hides your mana.
+- **Fade count on hide** (Visibility tab, on by default): when a count is hidden by your visibility settings (leaving or entering combat, moving the mouse off a button) it fades away instead of vanishing. A slider sets the fade time (0.1 to 3 seconds). Counts still appear instantly. "Only when my mana isn't full" can't fade, since Forever hides your mana.
 
 ## 2.3.0
 - **CastCount Button Mode**, like the game's Quick Keybind Mode: the Buttons tab's **Choose buttons** (or `/cc buttons`) closes the settings, covers your action buttons and shows a popup with the controls. **Okay** keeps your changes, **Add All** adds every action button on screen, **Remove All** clears them, **Cancel** or Escape undoes everything since you opened it. The Buttons tab itself no longer covers your bars.

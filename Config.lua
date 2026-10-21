@@ -599,28 +599,26 @@ function builders.visibility(p)
     Refresher(function() notFull:SetActive(S().outOfCombat) end)
 
     -- Fade on hide: counts fade away when hidden; they still appear instantly.
-    Check("Fade counts out when they hide", "fadeOut", 0, -140)
+    Check("Fade count on hide", "fadeOut", 0, -140)
     local fadeTime = UI.Slider(p, "Fade time (seconds)", 0.1, 3, 0.1, 220,
         function() return S().fadeTime or 0.5 end, function(v) S().fadeTime = v end)
-    fadeTime:SetPoint("TOPLEFT", 26, -166)
-    Note(p, "Counts still appear instantly. \"Only when my mana isn't full\" can't fade: Forever hides your mana.",
-        260, -170, 380)
+    fadeTime:SetPoint("TOPLEFT", 200, -132)
     Refresher(function() fadeTime:SetAlpha(S().fadeOut and 1 or 0.4) end)
 
-    Heading(p, "Spells", 0, -214)
-    Check("Count spells cast by macros", "macros", 0, -236)
+    Heading(p, "Spells", 0, -184)
+    Check("Count spells cast by macros", "macros", 0, -206)
 
     local reset = UI.Button(p, "Reset visibility settings", 180, 22, function()
         CC.ResetSection("show")
         Changed()
         UI.RefreshAll()
     end)
-    reset:SetPoint("TOPLEFT", 0, -276)
+    reset:SetPoint("TOPLEFT", 0, -246)
 
-    Heading(p, "Minimap", 0, -312)
+    Heading(p, "Minimap", 0, -282)
     local mm = UI.Check(p, "Show the minimap button", function() return not CC.db.minimap.hide end,
         function(v) CC.SetMinimapShown(v) end)
-    mm:SetPoint("TOPLEFT", 0, -334)
+    mm:SetPoint("TOPLEFT", 0, -304)
 
     Note(p, "Tip: untick both combat options and keep the mouse-over option ticked to see counts only when you hover a button.", 0, -386)
 end
