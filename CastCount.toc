@@ -7,7 +7,7 @@
 ## X-DrangedAddons-Games: _classic_beta_, _forever_
 ## SavedVariables: CastCountDB
 ## SavedVariablesPerCharacter: CastCountCharDB
-## IconTexture: Interface\Icons\Spell_Holy_MagicalSentry
+## IconTexture: Interface\Icons\Achievement_Reputation_KirinTor_Offensive
 ## AddonCompartmentFunc: CastCount_OnCompartmentClick
 
 Libs\LibStub\LibStub.lua

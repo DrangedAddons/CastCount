@@ -8,7 +8,7 @@ local ADDON, CC = ...
 
 local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
 local DBI = LibStub and LibStub("LibDBIcon-1.0", true)
-local ICON = "Interface\\Icons\\Spell_Holy_MagicalSentry"
+local ICON = "Interface\\Icons\\Achievement_Reputation_KirinTor_Offensive"
 
 function CC.SetMinimapShown(on)
     CC.db.minimap.hide = not on
