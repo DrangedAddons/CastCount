@@ -1,6 +1,6 @@
 # CastCount
 
-A World of Warcraft addon for WoW Forever (and the Classic beta) that shows how many times you can cast each spell with your current mana, right on the action buttons you choose. Pick your buttons, style the count, fill the button as mana comes back, and set up WeakAuras-style conditions that glow, pulse, recolour or warn you as your casts run low.
+A World of Warcraft addon for WoW Forever that shows how many times you can cast each spell with your current mana, right on the action buttons you choose. Pick your buttons, style the count, fill the button as mana comes back, and set up WeakAuras-style conditions that glow, pulse, recolour or warn you as your casts run low.
 
 ## Features
 - **Cast counts on your buttons:** current mana divided by the spell's cost, updated as you regenerate and spend. Works with spells cast from macros, and with every rank of a spell.

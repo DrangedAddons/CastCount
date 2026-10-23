@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.0.0
+- First live release for WoW Forever. The addon is now listed for Forever only (the Classic beta has ended). No changes in game.
+
 ## 2.4.3
 - New icon (Kirin Tor Offensive) for the addon list, minimap button and the DrangedAddons manager.
 
