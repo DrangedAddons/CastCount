@@ -29,7 +29,7 @@ jobs:
       - name: Build zip
         run: |
           mkdir -p build/CastCount
-          rsync -a --exclude='.git*' --exclude='.github' --exclude='build' ./ build/CastCount/
+          rsync -a --exclude='.git*' --exclude='.github' --exclude='build' --exclude='screenshots' ./ build/CastCount/
           cd build && zip -qr "../CastCount-${GITHUB_REF_NAME}.zip" CastCount
 
       # Every CHANGELOG section since the previous release, so versions that were never tagged on
