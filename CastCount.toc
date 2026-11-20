@@ -5,6 +5,9 @@
 ## Version: 3.0.0
 ## OptionalDeps: EllesmereUI, EllesmereUIActionBars
 ## X-DrangedAddons-Games: _forever_
+## X-DrangedHub-Frame: CastCountConfig
+## X-DrangedHub-Open: /castcount
+## X-DrangedHub-Crop: 34
 ## SavedVariables: CastCountDB
 ## SavedVariablesPerCharacter: CastCountCharDB
 ## IconTexture: Interface\Icons\Achievement_Reputation_KirinTor_Offensive
