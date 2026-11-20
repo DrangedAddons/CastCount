@@ -1,5 +1,8 @@
 # Changelog
 
+## 3.0.1
+- Fixed a Lua error spam ("attempted to assign too many points to a curve") when a spell on a chosen button could be cast more than 255 times on a full mana bar. The count for such a spell now shows 255 until your mana drops below 255 casts' worth.
+
 ## 3.0.0
 - First live release for WoW Forever. The addon is now listed for Forever only (the Classic beta has ended). No changes in game.
 

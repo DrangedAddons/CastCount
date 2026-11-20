@@ -422,6 +422,8 @@ local HAS_CURVES = C_CurveUtil and C_CurveUtil.CreateCurve and C_CurveUtil.Creat
     and UnitPowerPercent and Enum and Enum.LuaCurveType and true or false
 CC.HAS_CURVES = HAS_CURVES
 local MAX_COUNT = 999
+-- The game refuses more than 256 points on one curve (AddPoint errors on the 257th).
+local MAX_POINTS = 256
 local EPS = 1e-6
 local countCurves, plans, alphaCurve = {}, {}, nil
 local planCount = 0
@@ -448,7 +450,9 @@ local function CountCurve(cost, max)
     if c then return c end
     c = C_CurveUtil.CreateCurve()
     c:SetType(Enum.LuaCurveType.Step)
-    for k = 0, math.min(MAX_COUNT, math.floor(max / cost)) do
+    -- One point per count from 0, so the shown count tops out at MAX_POINTS - 1 (255)
+    -- for a spell cheap enough to cast more often than that on a full bar.
+    for k = 0, math.min(MAX_COUNT, MAX_POINTS - 1, math.floor(max / cost)) do
         c:AddPoint(StepX(k, cost, max), k)
     end
     countCurves[key] = c
@@ -504,11 +508,16 @@ local function Series(B, states, fn)
         if fn(states[i]) ~= first then same = false break end
     end
     if same then return { const = first } end
-    local curve, prev = C_CurveUtil.CreateCurve(), nil
+    -- Points go in from empty mana upward, so if the curve fills up (MAX_POINTS) the
+    -- high-mana end keeps its last value and the low counts stay exact.
+    local curve, prev, n = C_CurveUtil.CreateCurve(), nil, 0
     curve:SetType(Enum.LuaCurveType.Step)
     for i, st in ipairs(states) do
         local v = fn(st)
-        if v ~= prev then curve:AddPoint(B[i], v); prev = v end
+        if v ~= prev then
+            if n >= MAX_POINTS then break end
+            curve:AddPoint(B[i], v); prev = v; n = n + 1
+        end
     end
     return { curve = curve }
 end
@@ -534,12 +543,13 @@ local function ColorSeries(B, states, fn, fallback)
         if cols[i] ~= first then same = false break end
     end
     if same or not HAS_CURVES then return { const = first } end
-    local curve, prev = C_CurveUtil.CreateColorCurve(), nil
+    local curve, prev, n = C_CurveUtil.CreateColorCurve(), nil, 0
     curve:SetType(Enum.LuaCurveType.Step)
     for i, c in ipairs(cols) do
         if c ~= prev then
+            if n >= MAX_POINTS then break end
             curve:AddPoint(B[i], CreateColor(c.r, c.g, c.b, c.a or 1))
-            prev = c
+            prev = c; n = n + 1
         end
     end
     return { curve = curve }
